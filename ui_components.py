@@ -20,6 +20,13 @@ def render_member_card(member, is_selected=False, country="Australia"):
     
     border_style = f"border: 3px solid {primary_color};" if is_selected else "border: 1px solid #ddd;"
     
+    # Convert balance to float if it's a string
+    balance = member.get('super_balance', 0)
+    try:
+        balance = float(balance) if balance else 0
+    except (ValueError, TypeError):
+        balance = 0
+    
     card_html = f"""
     <div style="
         padding: 15px;
@@ -31,7 +38,7 @@ def render_member_card(member, is_selected=False, country="Australia"):
         <h4 style="color: {primary_color}; margin: 0 0 10px 0;">{member.get('name', 'Unknown')}</h4>
         <p style="margin: 5px 0;"><strong>Age:</strong> {member.get('age', 'N/A')}</p>
         <p style="margin: 5px 0;"><strong>Status:</strong> {member.get('employment_status', 'N/A')}</p>
-        <p style="margin: 5px 0;"><strong>Balance:</strong> ${member.get('super_balance', 0):,.0f}</p>
+        <p style="margin: 5px 0;"><strong>Balance:</strong> ${balance:,.0f}</p>
         <p style="margin: 5px 0; font-size: 0.8em; color: #666;">ID: {member.get('member_id', 'N/A')}</p>
     </div>
     """
