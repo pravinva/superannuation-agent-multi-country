@@ -29,3 +29,16 @@ UNITY_CATALOG = "super_advisory_demo"
 UNITY_SCHEMA = "member_data"
 GOVERNANCE_TABLE = "governance"
 MEMBER_PROFILES_TABLE = "member_profiles"
+
+# Helper functions
+def get_table_path(table_name):
+    """Get fully qualified table path"""
+    return f"{UNITY_CATALOG}.{UNITY_SCHEMA}.{table_name}"
+
+def get_governance_table_path():
+    """Get governance table full path"""
+    return get_table_path(GOVERNANCE_TABLE)
+
+def get_member_profiles_table_path():
+    """Get member profiles table full path"""
+    return get_table_path(MEMBER_PROFILES_TABLE)
