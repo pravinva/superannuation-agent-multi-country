@@ -14,7 +14,7 @@ def render_logo():
     
     # Display brand name and subtitle
     st.markdown(f"## 🏦 {BRANDCONFIG['brand_name']}")
-    st.caption(BRANDCONFIG.get('subtitle', 'Enterprise-Grade Agentic AI on Databricks')
+    st.caption(BRANDCONFIG.get('subtitle', 'Enterprise-Grade Agentic AI on Databricks'))
 
 
 def render_member_card(member, is_selected, country):
