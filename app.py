@@ -10,7 +10,7 @@ import os
 from config import BRANDCONFIG, MLFLOW_PROD_EXPERIMENT_PATH, ARCHITECTURECONTENT
 from ui_components import (
     render_logo, render_member_card, render_question_card,
-    render_country_prompt, render_disclaimer, render_postanswer_disclaimer,
+    render_country_welcome, render_postanswer_disclaimer,
     render_audit_table
 )
 from progress_utils import render_progress
@@ -74,13 +74,12 @@ page = st.sidebar.radio(
 
 st.sidebar.markdown("---")
 
-# Log toggle button
+# Log toggle with checkbox
 st.session_state.show_logs = st.sidebar.checkbox(
-    "Show Processing Logs", 
+    "👀 Show Processing Logs", 
     value=st.session_state.show_logs,
     key="log_toggle"
 )
-
 
 st.sidebar.markdown("---")
 st.sidebar.caption(f"Session: {st.session_state.session_id[:8]}...")
@@ -94,24 +93,37 @@ st.session_state.page = page
 if page == "Advisory":
     render_logo()
     
-    # Country selector
-    col1, col2 = st.columns([1, 3])
-    with col1:
-        country_display = st.selectbox(
-            "🌍 Select Country",
-            COUNTRIES,
-            index=COUNTRIES.index(st.session_state.country_display),
-            key="country_selector"
-        )
-        st.session_state.country_display = country_display
-        # Convert display name to code for database query
-        country_code = COUNTRY_DISPLAY_TO_CODE[country_display]
+    # Country selector with flags as horizontal radio buttons
+    st.subheader("🌍 Select Country")
+    
+    # Country options with flag emojis
+    country_options = {
+        "🇦🇺 Australia": "Australia",
+        "🇺🇸 USA": "USA",
+        "🇬🇧 United Kingdom": "United Kingdom",
+        "🇮🇳 India": "India"
+    }
+    
+    # Radio buttons horizontal
+    selected_country_with_flag = st.radio(
+        "Choose your country:",
+        options=list(country_options.keys()),
+        horizontal=True,
+        key="country_selector",
+        label_visibility="collapsed"
+    )
+    
+    # Get the country display name without flag
+    country_display = country_options[selected_country_with_flag]
+    st.session_state.country_display = country_display
+    
+    # Convert display name to code for database query
+    country_code = COUNTRY_DISPLAY_TO_CODE[country_display]
     
     st.markdown("---")
     
-    # Country-specific prompts and disclaimer (use display name for UI)
-    render_country_prompt(country_display)
-    render_disclaimer(country_display)
+    # Consolidated country welcome section (replaces multiple info boxes)
+    render_country_welcome(country_display)
     
     st.markdown("---")
     
@@ -128,7 +140,7 @@ if page == "Advisory":
         members = members_df.to_dict('records')
         
         # Display members in a grid
-        cols = st.columns(min(3, len(members)))
+        cols = st.columns(3)
         
         for idx, member in enumerate(members):
             with cols[idx % 3]:
@@ -158,31 +170,31 @@ if page == "Advisory":
         # Query input
         st.subheader("💬 Ask Your Question")
         
-        # Sample questions for the country (use display name)
+        # Sample questions for the country with better descriptions and emojis
         sample_questions = {
             "Australia": [
-                "How much can I withdraw from my super?",
-                "What are my preservation age rules?",
-                "Can I access my super early?"
+                "💰 What's the maximum amount I can withdraw from my superannuation this year?",
+                "�� At what age can I access my super without restrictions?",
+                "🏥 Can I access my super early for medical reasons or financial hardship?"
             ],
             "USA": [
-                "What's my 401(k) distribution amount?",
-                "When can I withdraw without penalty?",
-                "How much is my required minimum distribution?"
+                "💵 How much can I safely withdraw from my 401(k) without facing penalties?",
+                "�� What are the required minimum distributions (RMDs) for my age?",
+                "🎓 Can I withdraw from my 401(k) early for education or home purchase?"
             ],
             "United Kingdom": [
-                "What are my pension withdrawal options?",
-                "Can I transfer my pension overseas?",
-                "What's my tax-free lump sum?"
+                "💷 How much of my pension can I take as a tax-free lump sum?",
+                "✈️ Can I transfer my UK pension to another country if I move abroad?",
+                "⏰ What are my options for accessing my pension before state pension age?"
             ],
             "India": [
-                "How much can I withdraw from EPF?",
-                "What are my PF withdrawal rules?",
-                "Can I withdraw before retirement?"
+                "💸 What percentage of my EPF can I withdraw before retirement?",
+                "�� Can I withdraw from my PF for buying a house or medical emergency?",
+                "📊 How is my Employees' Pension Scheme (EPS) calculated at retirement?"
             ]
         }
         
-        st.caption("💡 Sample questions:")
+        st.caption("💡 Try these sample questions:")
         cols = st.columns(3)
         for idx, q in enumerate(sample_questions.get(country_display, [])[:3]):
             with cols[idx]:
@@ -201,10 +213,13 @@ if page == "Advisory":
                 st.warning("Please enter a question first.")
             else:
                 with st.spinner("🔄 Processing your request..."):
+                    # Show progress message if logs are hidden
                     if not st.session_state.show_logs:
-                        st.info("⏳ Processing your request. Estimated completion: 5-10 seconds. Please hold while we finalize your result.")
+                        progress_placeholder = st.empty()
+                        progress_placeholder.info("⏳ Processing your request. Estimated completion: 5-10 seconds.")
+                    
                     try:
-                        # Use display name for agent interaction (matches country_content structure)
+                        # Use display name for agent interaction
                         agent_output = run_agent_interaction(
                             user_id=st.session_state.user_id,
                             country=country_display,
@@ -213,11 +228,18 @@ if page == "Advisory":
                             session_id=st.session_state.session_id
                         )
                         st.session_state.agent_output = agent_output
+                        
+                        # Clear progress message
+                        if not st.session_state.show_logs:
+                            progress_placeholder.empty()
+                            
                     except Exception as e:
                         st.error(f"An error occurred: {str(e)}")
                         st.session_state.agent_output = None
+                        if not st.session_state.show_logs:
+                            progress_placeholder.empty()
         
-        # Show logs/progress
+        # Show logs IF enabled
         if st.session_state.show_logs:
             render_progress(True)
         

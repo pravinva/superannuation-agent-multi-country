@@ -56,16 +56,15 @@ def call_uc_function(function_name, *args):
 def calculate_super_australia(user_data):
     """Australian superannuation calculator"""
     member_id = user_data.get('member_id')
-    super_balance = user_data.get('super_balance', 0)
-    age = user_data.get('age', 65)
-    # Convert numeric fields from strings to numbers
+    
+    # Convert to float to handle string values from database
     try:
-        age = float(user_data.get('age', 65))
         super_balance = float(user_data.get('super_balance', 0))
+        age = float(user_data.get('age', 65))
     except (ValueError, TypeError):
-        age = 65
         super_balance = 0
- 
+        age = 65
+    
     withdrawal_pct = 0.05 if age >= 65 else 0.04
     withdrawal_amount = super_balance * withdrawal_pct
     
@@ -110,14 +109,15 @@ def calculate_super_australia(user_data):
 def calculate_401k_usa(user_data):
     """USA 401(k) calculator"""
     member_id = user_data.get('member_id')
-    balance = user_data.get('super_balance', 0)
-    age = user_data.get('age', 65)
-    # Convert age to float if it's a string
+    
+    # Convert to float to handle string values
     try:
-        age = float(age_raw)
+        balance = float(user_data.get('super_balance', 0))
+        age = float(user_data.get('age', 65))
     except (ValueError, TypeError):
+        balance = 0
         age = 65
- 
+    
     withdrawal_pct = 0.04 if age >= 59.5 else 0.03
     withdrawal_amount = balance * withdrawal_pct
     
@@ -158,15 +158,15 @@ def calculate_401k_usa(user_data):
 def calculate_uk_pension(user_data):
     """UK pension calculator"""
     member_id = user_data.get('member_id')
-    balance = user_data.get('super_balance', 0)
-    age = user_data.get('age', 65)
+    
+    # Convert to float to handle string values
     try:
-       age = float(user_data.get('age', 65))
-       super_balance = float(user_data.get('super_balance', 0))
+        balance = float(user_data.get('super_balance', 0))
+        age = float(user_data.get('age', 65))
     except (ValueError, TypeError):
-       age = 65
-       super_balance = 0 
-
+        balance = 0
+        age = 65
+    
     withdrawal_pct = 0.04 if age >= 55 else 0.03
     withdrawal_amount = balance * withdrawal_pct
     
@@ -205,15 +205,15 @@ def calculate_uk_pension(user_data):
 def calculate_india_pf(user_data):
     """India Provident Fund calculator"""
     member_id = user_data.get('member_id')
-    balance = user_data.get('super_balance', 0)
-    age = user_data.get('age', 65)
-   try:
-      age = float(user_data.get('age', 65))
-      super_balance = float(user_data.get('super_balance', 0))
-   except (ValueError, TypeError):
-       age = 65
-       super_balance = 0 
-
+    
+    # Convert to float to handle string values
+    try:
+        balance = float(user_data.get('super_balance', 0))
+        age = float(user_data.get('age', 65))
+    except (ValueError, TypeError):
+        balance = 0
+        age = 65
+    
     withdrawal_pct = 0.05 if age >= 58 else 0.03
     withdrawal_amount = balance * withdrawal_pct
     
@@ -224,7 +224,7 @@ def calculate_india_pf(user_data):
     if tax_info and pension_impact:
         summary = f"""Based on your India PF profile:
 
-💰 Recommended Annual Withdrawal: ₹{withdrawal_amount:,.2f}
+�� Recommended Annual Withdrawal: ₹{withdrawal_amount:,.2f}
    • Tax status: {tax_info.get('tax_status', 'Unknown')}
    • Net withdrawal: ₹{tax_info.get('net_withdrawal', withdrawal_amount):,.2f}
 
@@ -249,7 +249,7 @@ def get_country_tool(country):
     tools = {
         "Australia": calculate_super_australia,
         "USA": calculate_401k_usa,
-        "UK": calculate_uk_pension,
+        "United Kingdom": calculate_uk_pension,
         "India": calculate_india_pf
     }
     return tools.get(country, calculate_super_australia)
