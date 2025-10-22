@@ -8,15 +8,7 @@ from config import BRANDCONFIG, NATIONAL_COLORS
 from country_content import COUNTRY_PROMPTS, COUNTRY_DISCLAIMERS, POST_ANSWER_DISCLAIMERS
 
 def render_logo():
-    """Render brand logo, subtitle, and title"""
-    # Check if logo.png exists in root
-    if os.path.exists("logo.png"):
-        # Display logo centered
-        col1, col2, col3 = st.columns([1, 2, 1])
-        with col2:
-            st.image("logo.png", use_column_width=True)
-    
-    # Display brand name and subtitle
+    """Render brand title and subtitle (logo in sidebar)"""
     st.markdown(f"## 🏦 {BRANDCONFIG['brand_name']}")
     st.caption(BRANDCONFIG.get('subtitle', 'Enterprise-Grade Agentic AI on Databricks'))
 
@@ -67,24 +59,33 @@ def render_question_card(question, country="Australia"):
 
 def render_country_prompt(country):
     """Render country-specific prompts and information"""
-    prompts = COUNTRY_PROMPTS.get(country, COUNTRY_PROMPTS["Australia"])
+    prompts = COUNTRY_PROMPTS.get(country, COUNTRY_PROMPTS.get("Australia", []))
     
-    st.info(prompts.get('welcome', 'Welcome to the retirement advisory portal.'))
-    
-    if 'info' in prompts:
-        for info in prompts['info']:
-            st.info(info)
+    # Handle if prompts is a list (simple format)
+    if isinstance(prompts, list):
+        for prompt in prompts:
+            st.info(prompt)
+    # Handle if prompts is a dict (structured format)
+    elif isinstance(prompts, dict):
+        if 'welcome' in prompts:
+            st.info(prompts['welcome'])
+        if 'info' in prompts:
+            for info in prompts['info']:
+                st.info(info)
+    # Fallback
+    else:
+        st.info('Welcome to the retirement advisory portal.')
 
 
 def render_disclaimer(country):
     """Render country-specific disclaimer"""
-    disclaimer = COUNTRY_DISCLAIMERS.get(country, COUNTRY_DISCLAIMERS["Australia"])
+    disclaimer = COUNTRY_DISCLAIMERS.get(country, COUNTRY_DISCLAIMERS.get("Australia", "General advice disclaimer."))
     st.warning(disclaimer)
 
 
 def render_postanswer_disclaimer(country):
     """Render post-answer disclaimer"""
-    disclaimer = POST_ANSWER_DISCLAIMERS.get(country, POST_ANSWER_DISCLAIMERS["Australia"])
+    disclaimer = POST_ANSWER_DISCLAIMERS.get(country, POST_ANSWER_DISCLAIMERS.get("Australia", "Please verify with official sources."))
     st.info(disclaimer)
 
 

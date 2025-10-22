@@ -6,6 +6,7 @@ Main Streamlit application with two-page navigation
 
 import streamlit as st
 import uuid
+import os
 from config import BRANDCONFIG, MLFLOW_PROD_EXPERIMENT_PATH, ARCHITECTURECONTENT
 from ui_components import (
     render_logo, render_member_card, render_question_card,
@@ -39,14 +40,19 @@ if "show_logs" not in st.session_state:
 if "session_id" not in st.session_state:
     st.session_state.session_id = str(uuid.uuid4())
 if "user_id" not in st.session_state:
-    st.session_state.user_id = "demo_user@example.com"  # Replace with auth in production
+    st.session_state.user_id = "demo_user@example.com"
 if "agent_output" not in st.session_state:
     st.session_state.agent_output = None
 if "selected_member" not in st.session_state:
     st.session_state.selected_member = None
 
 # Sidebar navigation
+# Add logo to sidebar FIRST
+if os.path.exists("logo.png"):
+    st.sidebar.image("logo.png", use_column_width=True)
+
 st.sidebar.title(BRANDCONFIG["brand_name"])
+st.sidebar.caption(BRANDCONFIG.get('subtitle', 'Enterprise-Grade Agentic AI on Databricks'))
 st.sidebar.markdown("---")
 
 page = st.sidebar.radio(
@@ -73,7 +79,7 @@ st.session_state.page = page
 # ============================================================================
 if page == "Advisory":
     render_logo()
-
+    
     # Country selector
     col1, col2 = st.columns([1, 3])
     with col1:
@@ -84,31 +90,31 @@ if page == "Advisory":
             key="country_selector"
         )
         st.session_state.country = country
-
+    
     st.markdown("---")
-
+    
     # Country-specific prompts and disclaimer
     render_country_prompt(country)
     render_disclaimer(country)
-
+    
     st.markdown("---")
-
+    
     # Member selection
     st.subheader("📋 Select Member Profile")
-
+    
     # Retrieve members from Unity Catalog
     members_df = get_members_by_country(country)
-
+    
     if members_df.empty:
         st.warning(f"⚠️ No members found for {country}. Please add members to the database.")
         st.info("Run the SQL scripts in the `sql/` folder to add sample members.")
     else:
         members = members_df.to_dict('records')
-
+        
         # Display members in a grid
         cols = st.columns(min(3, len(members)))
         selected_idx = None
-
+        
         for idx, member in enumerate(members):
             with cols[idx % 3]:
                 is_selected = st.session_state.selected_member == member.get('member_id')
@@ -120,9 +126,9 @@ if page == "Advisory":
                 ):
                     st.session_state.selected_member = member.get('member_id')
                     selected_idx = idx
-
+                
                 render_member_card(member, is_selected, country)
-
+        
         # Get currently selected member
         if st.session_state.selected_member:
             member = next(
@@ -132,12 +138,12 @@ if page == "Advisory":
         else:
             member = members[0]
             st.session_state.selected_member = member.get('member_id')
-
+        
         st.markdown("---")
-
+        
         # Query input
         st.subheader("💬 Ask Your Question")
-
+        
         # Sample questions for the country
         sample_questions = {
             "Australia": [
@@ -161,20 +167,20 @@ if page == "Advisory":
                 "Can I withdraw before retirement?"
             ]
         }
-
+        
         st.caption("💡 Sample questions:")
         cols = st.columns(3)
         for idx, q in enumerate(sample_questions.get(country, [])[:3]):
             with cols[idx]:
                 if st.button(q, key=f"sample_q_{idx}", use_container_width=True):
                     st.session_state.query_input = q
-
+        
         question = st.text_input(
             "Your question:",
             placeholder="Type your retirement/pension question here...",
             key="query_input"
         )
-
+        
         # Get recommendation button
         if st.button("🚀 Get Recommendation", type="primary", use_container_width=True):
             if not question:
@@ -193,21 +199,21 @@ if page == "Advisory":
                     except Exception as e:
                         st.error(f"An error occurred: {str(e)}")
                         st.session_state.agent_output = None
-
+        
         # Show logs/progress
         render_progress(st.session_state.show_logs)
-
+        
         # Display results
         if st.session_state.agent_output:
             st.markdown("---")
             st.subheader("📊 Recommendation")
-
+            
             # Main answer
             st.success(st.session_state.agent_output["answer"])
-
+            
             # Post-answer disclaimer
             render_postanswer_disclaimer(country)
-
+            
             # Citations
             st.markdown("#### 📚 Citations & References")
             citations = st.session_state.agent_output.get("citations", [])
@@ -216,7 +222,7 @@ if page == "Advisory":
                     st.caption(f"[{i}] {cite}")
             else:
                 st.caption("No citations available.")
-
+            
             # Judge validation (if available)
             if st.session_state.agent_output.get("judge_verdict"):
                 with st.expander("🔍 Quality Validation Details"):
@@ -227,7 +233,7 @@ if page == "Advisory":
                         st.error(f"❌ Validation: {verdict}")
                     else:
                         st.warning(f"⚠️ Validation: {verdict}")
-
+                    
                     if st.session_state.agent_output.get("judge_response"):
                         st.text(st.session_state.agent_output["judge_response"])
 
@@ -236,21 +242,21 @@ if page == "Advisory":
 # ============================================================================
 elif page == "Audit/Governance":
     st.title("🔒 Governance & Developer Tools")
-
+    
     tab1, tab2 = st.tabs(["🔒 Governance", "🛠️ Developer"])
-
+    
     # ========================================================================
     # GOVERNANCE TAB
     # ========================================================================
     with tab1:
         st.header("Audit Trail & Compliance")
-
+        
         st.markdown(f"""
         All user interactions are logged to Unity Catalog for compliance and governance.
-
+        
         **Table:** `{ARCHITECTURECONTENT.get('infra_details', 'Unity Catalog governance table')}`
         """)
-
+        
         # Filter options
         col1, col2, col3 = st.columns(3)
         with col1:
@@ -271,12 +277,12 @@ elif page == "Audit/Governance":
                 placeholder="Leave empty for all",
                 key="audit_session_filter"
             )
-
+        
         # Apply filters
         country_filter = None if filter_country == "All" else filter_country
         user_filter = filter_user if filter_user else None
         session_filter = filter_session if filter_session else None
-
+        
         # Retrieve audit logs
         with st.spinner("Loading audit logs..."):
             audit_df = get_audit_log(
@@ -284,15 +290,15 @@ elif page == "Audit/Governance":
                 user_id=user_filter,
                 country=country_filter
             )
-
+        
         # Display audit table
         render_audit_table(audit_df)
-
+        
         # Summary metrics
         if not audit_df.empty:
             st.markdown("---")
             st.subheader("📈 Summary Metrics")
-
+            
             col1, col2, col3, col4 = st.columns(4)
             with col1:
                 st.metric("Total Queries", len(audit_df))
@@ -307,17 +313,17 @@ elif page == "Audit/Governance":
                 if 'error_info' in audit_df.columns:
                     error_count = (audit_df['error_info'] != '').sum()
                     st.metric("Errors", error_count)
-
+    
     # ========================================================================
     # DEVELOPER TAB
     # ========================================================================
     with tab2:
         st.header("MLflow Experiment Tracking & Evaluation")
-
+        
         st.markdown("""
         View MLflow experiment runs and trigger evaluations.
         """)
-
+        
         # MLflow experiment selector
         exp_type = st.radio(
             "Select Experiment Type",
@@ -325,55 +331,56 @@ elif page == "Audit/Governance":
             horizontal=True,
             key="mlflow_exp_type"
         )
-
+        
         exp_path = MLFLOW_PROD_EXPERIMENT_PATH if exp_type == "Production" else st.session_state.get("mlflow_offline_path", "/Shared/experiments/offline/retirement-eval")
-
+        
         st.info(f"📊 Viewing: `{exp_path}`")
-
+        
         # Display MLflow runs
         with st.spinner("Loading MLflow runs..."):
             show_mlflow_runs(exp_path=exp_path)
-
+        
         st.markdown("---")
-
+        
         # Evaluation tools
         st.subheader("🧪 Run Evaluation")
-
+        
         eval_mode = st.radio(
             "Evaluation Mode",
             ["Online (Single Query)", "Offline (Batch CSV)"],
             key="eval_mode"
         )
-
+        
         if eval_mode == "Online (Single Query)":
             st.markdown("Test a single query immediately:")
             eval_country = st.selectbox("Country", COUNTRIES, key="eval_country")
             eval_query = st.text_input("Query", key="eval_query")
-
+            
             if st.button("▶️ Run Online Evaluation"):
                 if eval_query:
                     st.info("Online evaluation triggered. Check MLflow for results.")
                 else:
                     st.warning("Please enter a query.")
-
+        
         else:  # Offline mode
             st.markdown("""
             Run batch evaluation from a CSV file:
-
+            
             **CSV Format:**
             ```
             user_id,country,query_str,age,super_balance
             user001,Australia,"How much can I withdraw?",65,450000
             ```
-
+            
             **Command:**
-            ```bash
+            ```
             python run_evaluation.py --mode offline --csv_path /path/to/eval_data.csv
             ```
             """)
-
+            
             st.info("Upload CSV and run evaluation from Databricks notebook or terminal.")
 
 # Footer
 st.markdown("---")
 st.caption(f"🏦 {BRANDCONFIG['brand_name']} | Session: {st.session_state.session_id[:8]}... | Support: {BRANDCONFIG['support_email']}")
+
