@@ -7,6 +7,7 @@ Main Streamlit application with two-page navigation
 import streamlit as st
 import uuid
 import os
+
 from config import BRANDCONFIG, MLFLOW_PROD_EXPERIMENT_PATH, ARCHITECTURECONTENT
 from ui_components import (
     render_logo, render_member_card, render_question_card,
@@ -18,6 +19,7 @@ from audit.audit_utils import get_audit_log
 from mlflow_utils import show_mlflow_runs
 from agent import run_agent_interaction
 from data_utils import get_members_by_country
+from country_content import COUNTRY_PROMPTS, COUNTRY_DISCLAIMERS, POST_ANSWER_DISCLAIMERS
 
 # Country codes to display names mapping
 COUNTRY_CODES = {
@@ -76,7 +78,7 @@ st.sidebar.markdown("---")
 
 # Log toggle with checkbox
 st.session_state.show_logs = st.sidebar.checkbox(
-    "👀 Show Processing Logs", 
+    "👀 Show Processing Logs",
     value=st.session_state.show_logs,
     key="log_toggle"
 )
@@ -119,11 +121,13 @@ if page == "Advisory":
     
     # Convert display name to code for database query
     country_code = COUNTRY_DISPLAY_TO_CODE[country_display]
-    
     st.markdown("---")
     
     # Consolidated country welcome section (replaces multiple info boxes)
-    render_country_welcome(country_display)
+    # FIX: Pass the required arguments
+    prompt_text = COUNTRY_PROMPTS.get(country_display, COUNTRY_PROMPTS["Australia"])
+    disclaimer = COUNTRY_DISCLAIMERS.get(country_display, COUNTRY_DISCLAIMERS["Australia"])
+    render_country_welcome(country_display, prompt_text, disclaimer)
     
     st.markdown("---")
     
@@ -141,7 +145,6 @@ if page == "Advisory":
         
         # Display members in a grid
         cols = st.columns(3)
-        
         for idx, member in enumerate(members):
             with cols[idx % 3]:
                 is_selected = st.session_state.selected_member == member.get('member_id')
@@ -152,7 +155,6 @@ if page == "Advisory":
                     type="primary" if is_selected else "secondary"
                 ):
                     st.session_state.selected_member = member.get('member_id')
-                
                 render_member_card(member, is_selected, country_display)
         
         # Get currently selected member
@@ -232,16 +234,16 @@ if page == "Advisory":
                         # Clear progress message
                         if not st.session_state.show_logs:
                             progress_placeholder.empty()
-                            
+                    
                     except Exception as e:
                         st.error(f"An error occurred: {str(e)}")
                         st.session_state.agent_output = None
                         if not st.session_state.show_logs:
                             progress_placeholder.empty()
-        
-        # Show logs IF enabled
-        if st.session_state.show_logs:
-            render_progress(True)
+                
+                # Show logs IF enabled
+                if st.session_state.show_logs:
+                    render_progress(True)
         
         # Display results
         if st.session_state.agent_output:
@@ -290,15 +292,14 @@ elif page == "Audit/Governance":
     # ========================================================================
     with tab1:
         st.header("Audit Trail & Compliance")
-        
         st.markdown(f"""
         All user interactions are logged to Unity Catalog for compliance and governance.
-        
         **Table:** `{ARCHITECTURECONTENT.get('infra_details', 'Unity Catalog governance table')}`
         """)
         
         # Filter options
         col1, col2, col3 = st.columns(3)
+        
         with col1:
             filter_country_display = st.selectbox(
                 "Filter by Country",
@@ -307,12 +308,14 @@ elif page == "Audit/Governance":
             )
             # Convert display name to code if not "All"
             filter_country = None if filter_country_display == "All" else COUNTRY_DISPLAY_TO_CODE.get(filter_country_display)
+        
         with col2:
             filter_user = st.text_input(
                 "Filter by User ID",
                 placeholder="Leave empty for all",
                 key="audit_user_filter"
             )
+        
         with col3:
             filter_session = st.text_input(
                 "Filter by Session",
@@ -341,11 +344,14 @@ elif page == "Audit/Governance":
             st.subheader("📈 Summary Metrics")
             
             col1, col2, col3, col4 = st.columns(4)
+            
             with col1:
                 st.metric("Total Queries", len(audit_df))
+            
             with col2:
                 total_cost = audit_df['cost'].sum() if 'cost' in audit_df.columns else 0
                 st.metric("Total Cost", f"${total_cost:.2f}")
+            
             with col3:
                 if 'judge_verdict' in audit_df.columns:
                     pass_count = (audit_df['judge_verdict'] == 'Pass').sum()
@@ -353,6 +359,7 @@ elif page == "Audit/Governance":
                     st.metric("Pass Rate", f"{pass_rate:.1f}%")
                 else:
                     st.metric("Pass Rate", "N/A")
+            
             with col4:
                 if 'error_info' in audit_df.columns:
                     error_count = audit_df['error_info'].notna().sum()
@@ -365,7 +372,6 @@ elif page == "Audit/Governance":
     # ========================================================================
     with tab2:
         st.header("MLflow Experiment Tracking & Evaluation")
-        
         st.markdown("""
         View MLflow experiment runs and trigger evaluations.
         """)
@@ -379,7 +385,6 @@ elif page == "Audit/Governance":
         )
         
         exp_path = MLFLOW_PROD_EXPERIMENT_PATH if exp_type == "Production" else st.session_state.get("mlflow_offline_path", "/Shared/experiments/offline/retirement-eval")
-        
         st.info(f"📊 Viewing: `{exp_path}`")
         
         # Display MLflow runs
@@ -390,7 +395,6 @@ elif page == "Audit/Governance":
         
         # Evaluation tools
         st.subheader("🧪 Run Evaluation")
-        
         eval_mode = st.radio(
             "Evaluation Mode",
             ["Online (Single Query)", "Offline (Batch CSV)"],
@@ -423,7 +427,6 @@ elif page == "Audit/Governance":
             python run_evaluation.py --mode offline --csv_path /path/to/eval_data.csv
             ```
             """)
-            
             st.info("Upload CSV and run evaluation from Databricks notebook or terminal.")
 
 # Footer
