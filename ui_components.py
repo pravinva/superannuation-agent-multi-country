@@ -1,8 +1,11 @@
 # ui_components.py
+"""UI components for the retirement advisory app"""
+
 import streamlit as st
 import os
-from config import NATIONAL_COLORS
-from country_content import COUNTRY_DISCLAIMERS, POST_ANSWER_DISCLAIMERS, COUNTRY_PROMPTS
+import pandas as pd
+from config import BRANDCONFIG, NATIONAL_COLORS
+from country_content import COUNTRY_PROMPTS, COUNTRY_DISCLAIMERS, POST_ANSWER_DISCLAIMERS
 
 def render_logo():
     """Render brand logo, subtitle, and title"""
@@ -11,66 +14,75 @@ def render_logo():
         # Display logo centered
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
-            st.image("logo.png", use_container_width=True)
+            st.image("logo.png", use_column_width=True)
     
     # Display brand name and subtitle
     st.markdown(f"## 🏦 {BRANDCONFIG['brand_name']}")
     st.caption(BRANDCONFIG.get('subtitle', 'Enterprise-Grade Agentic AI on Databricks'))
 
 
-def render_member_card(member, is_selected, country):
-    """Render a member card with country-specific colors"""
-    colors = NATIONAL_COLORS.get(country, ["#333", "#FFF"])
-    border = "3px solid #0066cc" if is_selected else "1px solid #ddd"
+def render_member_card(member, is_selected=False, country="Australia"):
+    """Render a member profile card with national colors"""
+    colors = NATIONAL_COLORS.get(country, NATIONAL_COLORS["Australia"])
+    primary_color = colors[0]
+    
+    border_style = f"border: 3px solid {primary_color};" if is_selected else "border: 1px solid #ddd;"
     
     card_html = f"""
-    <div style='background: linear-gradient(135deg, {colors[0]} 0%, {colors[1]} 100%); 
-                padding: 1.2em; border-radius: 10px; margin-bottom: 1em; 
-                border: {border}; color: white; font-weight: bold;'>
-        <div style='font-size: 1.2em;'>{member.get('name', 'Unknown')}</div>
-        <div style='opacity: 0.9; margin-top: 0.5em;'>
-            Age: {member.get('age', 'N/A')} | 
-            Status: {member.get('employment_status', 'N/A')} | 
-            Balance: ${member.get('super_balance', 0):,.0f}
-        </div>
+    <div style="
+        padding: 15px;
+        border-radius: 10px;
+        {border_style}
+        background-color: {'#f0f8ff' if is_selected else '#ffffff'};
+        margin: 10px 0;
+    ">
+        <h4 style="color: {primary_color}; margin: 0 0 10px 0;">{member.get('name', 'Unknown')}</h4>
+        <p style="margin: 5px 0;"><strong>Age:</strong> {member.get('age', 'N/A')}</p>
+        <p style="margin: 5px 0;"><strong>Status:</strong> {member.get('employment_status', 'N/A')}</p>
+        <p style="margin: 5px 0;"><strong>Balance:</strong> ${member.get('super_balance', 0):,.0f}</p>
+        <p style="margin: 5px 0; font-size: 0.8em; color: #666;">ID: {member.get('member_id', 'N/A')}</p>
     </div>
     """
     st.markdown(card_html, unsafe_allow_html=True)
 
-def render_question_card(question, country):
-    """Render a question with country colors"""
-    colors = NATIONAL_COLORS.get(country, ["#333", "#FFF"])
-    st.markdown(
-        f"<div style='padding: 0.8em; border-radius: 8px; "
-        f"background: {colors[0]}; color: white; margin: 0.5em 0;'>"
-        f"💬 {question}</div>",
-        unsafe_allow_html=True
-    )
+
+def render_question_card(question, country="Australia"):
+    """Render a sample question card with national colors"""
+    colors = NATIONAL_COLORS.get(country, NATIONAL_COLORS["Australia"])
+    primary_color = colors[0]
+    
+    card_html = f"""
+    <div style="
+        padding: 12px;
+        border-left: 4px solid {primary_color};
+        background-color: #f9f9f9;
+        margin: 8px 0;
+        border-radius: 5px;
+    ">
+        <p style="margin: 0; color: #333;">{question}</p>
+    </div>
+    """
+    st.markdown(card_html, unsafe_allow_html=True)
+
 
 def render_country_prompt(country):
-    """Render country-specific welcome prompts"""
-    prompts = COUNTRY_PROMPTS.get(country, ["Welcome!"])
-    for prompt in prompts[:2]:  # Show first 2 prompts
-        st.info(prompt)
+    """Render country-specific prompts and information"""
+    prompts = COUNTRY_PROMPTS.get(country, COUNTRY_PROMPTS["Australia"])
+    
+    st.info(prompts.get('welcome', 'Welcome to the retirement advisory portal.'))
+    
+    if 'info' in prompts:
+        for info in prompts['info']:
+            st.info(info)
+
 
 def render_disclaimer(country):
     """Render country-specific disclaimer"""
-    disclaimer = COUNTRY_DISCLAIMERS.get(country, "General advice only.")
-    st.markdown(f"<small style='color: #666;'>⚠️ {disclaimer}</small>", unsafe_allow_html=True)
+    disclaimer = COUNTRY_DISCLAIMERS.get(country, COUNTRY_DISCLAIMERS["Australia"])
+    st.warning(disclaimer)
+
 
 def render_postanswer_disclaimer(country):
     """Render post-answer disclaimer"""
-    disclaimer = POST_ANSWER_DISCLAIMERS.get(country, "Please verify with official sources.")
-    st.markdown(f"<small style='color: #888; font-size: 0.85em;'>💡 {disclaimer}</small>", unsafe_allow_html=True)
-
-def render_audit_table(audit_df):
-    """Render audit log table"""
-    if audit_df.empty:
-        st.warning("No audit data found.")
-        return
-    
-    # Display key columns
-    display_cols = ['timestamp', 'user_id', 'country', 'query_string', 'judge_verdict', 'cost']
-    available_cols = [col for col in display_cols if col in audit_df.columns]
-    st.dataframe(audit_df[available_cols], use_container_width=True)
+    disclaimer = POST_ANSWER_DISCLAIM
 
