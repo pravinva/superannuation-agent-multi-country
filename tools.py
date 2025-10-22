@@ -1,33 +1,69 @@
 # tools.py
 """
 Country-specific retirement calculator tools
-Integrates with Unity Catalog functions for all countries (Australia, USA, UK, India)
-All functions registered in super_advisory_demo.mcp_tools schema
+Uses Databricks SDK to auto-discover serverless SQL warehouse
+No manual credentials or warehouse selection required
 """
 
-from pyspark.sql import SparkSession
+from databricks.sdk import WorkspaceClient
+from databricks.sdk.service.sql import StatementState
 from country_content import COUNTRY_REGULATIONS
+import time
 
-def get_spark():
-    """Get or create Spark session"""
-    return SparkSession.builder.getOrCreate()
+# Initialize Databricks SDK client (auto-authenticated in Databricks Apps)
+w = WorkspaceClient()
+
+def get_serverless_warehouse():
+    """Automatically find a serverless SQL warehouse"""
+    warehouses = w.warehouses.list()
+
+    # Filter for serverless warehouses that are running or can be started
+    for warehouse in warehouses:
+        if warehouse.enable_serverless_compute and warehouse.state in ['RUNNING', 'STOPPED']:
+            return warehouse.id
+
+    # If no serverless found, use any available warehouse
+    for warehouse in warehouses:
+        if warehouse.state in ['RUNNING', 'STOPPED']:
+            return warehouse.id
+
+    raise ValueError("No SQL warehouse available")
+
+def call_uc_function(function_name, *args):
+    """Generic UC function caller using Databricks SDK"""
+    try:
+        warehouse_id = get_serverless_warehouse()
+
+        # Format arguments
+        args_str = ", ".join([f"\'{arg}\'" if isinstance(arg, str) else str(arg) for arg in args])
+        query = f"SELECT super_advisory_demo.mcp_tools.{function_name}({args_str}) as result"
+
+        # Execute statement
+        statement = w.statement_execution.execute_statement(
+            warehouse_id=warehouse_id,
+            statement=query,
+            wait_timeout="30s"
+        )
+
+        # Wait for completion
+        while statement.status.state in [StatementState.PENDING, StatementState.RUNNING]:
+            time.sleep(0.5)
+            statement = w.statement_execution.get_statement(statement.statement_id)
+
+        if statement.status.state == StatementState.SUCCEEDED:
+            # Extract result
+            if statement.result and statement.result.data_array:
+                return statement.result.data_array[0][0]
+
+        return None
+
+    except Exception as e:
+        print(f"Error calling UC function {function_name}: {e}")
+        return None
 
 # ============================================================================
 # AUSTRALIA - Unity Catalog Functions
 # ============================================================================
-
-def call_uc_function(function_name, *args):
-    """Generic UC function caller with error handling"""
-    spark = get_spark()
-    try:
-        args_str = ", ".join([f"'{arg}'" if isinstance(arg, str) else str(arg) for arg in args])
-        result = spark.sql(f"""
-            SELECT super_advisory_demo.mcp_tools.{function_name}({args_str}) as result
-        """).collect()[0]['result']
-        return result
-    except Exception as e:
-        print(f"Error calling UC function {function_name}: {e}")
-        return None
 
 def calculate_super_australia(user_data):
     """Australian superannuation calculator using UC functions"""
@@ -86,11 +122,9 @@ def calculate_401k_usa(user_data):
     balance = user_data.get('super_balance', 0)
     age = user_data.get('age', 65)
 
-    # Calculate withdrawal
     withdrawal_pct = 0.04 if age >= 59.5 else 0.03
     withdrawal_amount = balance * withdrawal_pct
 
-    # Call UC functions
     tax_info = call_uc_function('calculate_401k_withdrawal', member_id, withdrawal_amount)
     ss_impact = call_uc_function('check_social_security_impact', member_id, withdrawal_amount)
     projection = call_uc_function('project_401k_balance', member_id, 10)
@@ -136,11 +170,9 @@ def calculate_uk_pension(user_data):
     balance = user_data.get('super_balance', 0)
     age = user_data.get('age', 65)
 
-    # Calculate withdrawal
     withdrawal_pct = 0.04 if age >= 55 else 0.03
     withdrawal_amount = balance * withdrawal_pct
 
-    # Call UC functions
     tax_info = call_uc_function('calculate_uk_pension_withdrawal', member_id, withdrawal_amount)
     state_pension = call_uc_function('check_uk_state_pension', member_id, withdrawal_amount)
     projection = call_uc_function('project_uk_pension_balance', member_id, 10)
@@ -188,11 +220,9 @@ def calculate_india_pf(user_data):
     balance = user_data.get('super_balance', 0)
     age = user_data.get('age', 65)
 
-    # Calculate withdrawal
     withdrawal_pct = 0.05 if age >= 58 else 0.03
     withdrawal_amount = balance * withdrawal_pct
 
-    # Call UC functions
     tax_info = call_uc_function('calculate_epf_withdrawal', member_id, withdrawal_amount)
     pension_impact = call_uc_function('check_india_pension_impact', member_id, withdrawal_amount)
     projection = call_uc_function('project_india_pf_balance', member_id, 10)
