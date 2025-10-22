@@ -2,8 +2,8 @@
 
 BRANDCONFIG = {
     "brand_name": "Global Retirement Advisory",
-    "logo_url": "static/logo.svg",
-    "support_email": "support@example.com"
+    "subtitle": "Enterprise-Grade Agentic AI on Databricks",
+    "logo_url": "logo.png"
 }
 
 # National colors for UI theming
@@ -30,6 +30,7 @@ UNITY_SCHEMA = "member_data"
 GOVERNANCE_TABLE = "governance"
 MEMBER_PROFILES_TABLE = "member_profiles"
 
+SQL_WAREHOUSE_ID = "4b9b953939869799"
 # Helper functions
 def get_table_path(table_name):
     """Get fully qualified table path"""
