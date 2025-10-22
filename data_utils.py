@@ -41,11 +41,12 @@ def execute_query(query):
         print(f"Error executing query: {e}")
         return pd.DataFrame()
 
-def get_members_by_country(country):
-    """Retrieve member profiles for a specific country"""
+def get_members_by_country(country, limit=3):
+    """Retrieve random member profiles for a specific country"""
     table_path = get_member_profiles_table_path()
-    query = f"SELECT * FROM {table_path} WHERE country = '{country}'"
+    query = f"SELECT * FROM {table_path} WHERE country = '{country}' ORDER BY RAND() LIMIT {limit}"
     return execute_query(query)
+
 
 def get_member_by_id(member_id):
     """Retrieve a specific member by ID"""
