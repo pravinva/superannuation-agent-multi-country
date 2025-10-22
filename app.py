@@ -121,10 +121,11 @@ if page == "Advisory":
     
     # Convert display name to code for database query
     country_code = COUNTRY_DISPLAY_TO_CODE[country_display]
+    
     st.markdown("---")
     
     # Consolidated country welcome section (replaces multiple info boxes)
-    # FIX: Pass the required arguments
+    # FIX APPLIED: Pass all 3 required arguments
     prompt_text = COUNTRY_PROMPTS.get(country_display, COUNTRY_PROMPTS["Australia"])
     disclaimer = COUNTRY_DISCLAIMERS.get(country_display, COUNTRY_DISCLAIMERS["Australia"])
     render_country_welcome(country_display, prompt_text, disclaimer)
@@ -176,13 +177,13 @@ if page == "Advisory":
         sample_questions = {
             "Australia": [
                 "💰 What's the maximum amount I can withdraw from my superannuation this year?",
-                "�� At what age can I access my super without restrictions?",
+                "🎂 At what age can I access my super without restrictions?",
                 "🏥 Can I access my super early for medical reasons or financial hardship?"
             ],
             "USA": [
                 "💵 How much can I safely withdraw from my 401(k) without facing penalties?",
-                "�� What are the required minimum distributions (RMDs) for my age?",
-                "🎓 Can I withdraw from my 401(k) early for education or home purchase?"
+                "📅 What are the required minimum distributions (RMDs) for my age?",
+                "�� Can I withdraw from my 401(k) early for education or home purchase?"
             ],
             "United Kingdom": [
                 "💷 How much of my pension can I take as a tax-free lump sum?",
@@ -191,7 +192,7 @@ if page == "Advisory":
             ],
             "India": [
                 "💸 What percentage of my EPF can I withdraw before retirement?",
-                "�� Can I withdraw from my PF for buying a house or medical emergency?",
+                "🏠 Can I withdraw from my PF for buying a house or medical emergency?",
                 "📊 How is my Employees' Pension Scheme (EPS) calculated at retirement?"
             ]
         }

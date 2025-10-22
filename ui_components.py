@@ -134,7 +134,7 @@ def render_member_card(member, is_selected=False, country="Australia"):
     </div>
     """
     
-    # FIX: Added unsafe_allow_html=True
+    # FIX APPLIED: Added unsafe_allow_html=True
     st.markdown(card_html, unsafe_allow_html=True)
 
 
@@ -158,7 +158,7 @@ def render_question_card(question, emoji="💬"):
     </div>
     """
     
-    # FIX: Added unsafe_allow_html=True
+    # FIX APPLIED: Added unsafe_allow_html=True
     st.markdown(card_html, unsafe_allow_html=True)
 
 
@@ -216,7 +216,7 @@ def render_country_welcome(country, prompt_text, disclaimer):
     </div>
     """
     
-    # FIX: Added unsafe_allow_html=True
+    # FIX APPLIED: Added unsafe_allow_html=True
     st.markdown(welcome_html, unsafe_allow_html=True)
 
 
@@ -238,7 +238,7 @@ def render_postanswer_disclaimer(country):
     </div>
     """
     
-    # FIX: Added unsafe_allow_html=True
+    # FIX APPLIED: Added unsafe_allow_html=True
     st.markdown(disclaimer_html, unsafe_allow_html=True)
 
 
