@@ -58,7 +58,14 @@ def calculate_super_australia(user_data):
     member_id = user_data.get('member_id')
     super_balance = user_data.get('super_balance', 0)
     age = user_data.get('age', 65)
-    
+    # Convert numeric fields from strings to numbers
+    try:
+        age = float(user_data.get('age', 65))
+        super_balance = float(user_data.get('super_balance', 0))
+    except (ValueError, TypeError):
+        age = 65
+        super_balance = 0
+ 
     withdrawal_pct = 0.05 if age >= 65 else 0.04
     withdrawal_amount = super_balance * withdrawal_pct
     
@@ -105,7 +112,12 @@ def calculate_401k_usa(user_data):
     member_id = user_data.get('member_id')
     balance = user_data.get('super_balance', 0)
     age = user_data.get('age', 65)
-    
+    # Convert age to float if it's a string
+    try:
+        age = float(age_raw)
+    except (ValueError, TypeError):
+        age = 65
+ 
     withdrawal_pct = 0.04 if age >= 59.5 else 0.03
     withdrawal_amount = balance * withdrawal_pct
     
@@ -148,7 +160,13 @@ def calculate_uk_pension(user_data):
     member_id = user_data.get('member_id')
     balance = user_data.get('super_balance', 0)
     age = user_data.get('age', 65)
-    
+    try:
+       age = float(user_data.get('age', 65))
+       super_balance = float(user_data.get('super_balance', 0))
+    except (ValueError, TypeError):
+       age = 65
+       super_balance = 0 
+
     withdrawal_pct = 0.04 if age >= 55 else 0.03
     withdrawal_amount = balance * withdrawal_pct
     
@@ -189,7 +207,13 @@ def calculate_india_pf(user_data):
     member_id = user_data.get('member_id')
     balance = user_data.get('super_balance', 0)
     age = user_data.get('age', 65)
-    
+   try:
+      age = float(user_data.get('age', 65))
+      super_balance = float(user_data.get('super_balance', 0))
+   except (ValueError, TypeError):
+       age = 65
+       super_balance = 0 
+
     withdrawal_pct = 0.05 if age >= 58 else 0.03
     withdrawal_amount = balance * withdrawal_pct
     

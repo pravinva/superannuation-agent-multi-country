@@ -75,9 +75,12 @@ page = st.sidebar.radio(
 st.sidebar.markdown("---")
 
 # Log toggle button
-log_status = "Hide Logs" if st.session_state.show_logs else "Show Logs"
-if st.sidebar.button(f"��️ {log_status}"):
-    st.session_state.show_logs = not st.session_state.show_logs
+st.session_state.show_logs = st.sidebar.checkbox(
+    "Show Processing Logs", 
+    value=st.session_state.show_logs,
+    key="log_toggle"
+)
+
 
 st.sidebar.markdown("---")
 st.sidebar.caption(f"Session: {st.session_state.session_id[:8]}...")
