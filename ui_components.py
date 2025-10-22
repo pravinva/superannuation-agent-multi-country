@@ -1,5 +1,6 @@
 # ui_components.py
 import streamlit as st
+import os
 from config import NATIONAL_COLORS
 from country_content import COUNTRY_DISCLAIMERS, POST_ANSWER_DISCLAIMERS, COUNTRY_PROMPTS
 
