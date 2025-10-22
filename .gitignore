@@ -67,7 +67,6 @@ mlartifacts/
 
 # Logs and databases
 *.log
-*.sql
 *.sqlite
 *.db
 
