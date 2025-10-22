@@ -3,7 +3,8 @@
 BRANDCONFIG = {
     "brand_name": "Global Retirement Advisory",
     "subtitle": "Enterprise-Grade Agentic AI on Databricks",
-    "logo_url": "logo.png"
+    "logo_url": "logo.png",
+    "support_email": "support@globalpensionfund.com" 
 }
 
 # National colors for UI theming
@@ -13,6 +14,7 @@ NATIONAL_COLORS = {
     "UK": ["#012169", "#C8102E", "#FFFFFF"],
     "India": ["#FF9933", "#138808", "#FFFFFF"]
 }
+
 
 # MLflow experiment configuration
 MLFLOW_PROD_EXPERIMENT_PATH = "/Workspace/Users/pravin.varma@databricks.com/experiments/prod/retirement-advisory"

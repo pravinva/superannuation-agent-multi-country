@@ -19,8 +19,19 @@ from mlflow_utils import show_mlflow_runs
 from agent import run_agent_interaction
 from data_utils import get_members_by_country
 
-# Supported countries
-COUNTRIES = ["Australia", "USA", "UK", "India"]
+# Country codes to display names mapping
+COUNTRY_CODES = {
+    "AU": "Australia",
+    "US": "USA",
+    "UK": "United Kingdom",
+    "IN": "India"
+}
+
+# Reverse mapping for display to code
+COUNTRY_DISPLAY_TO_CODE = {v: k for k, v in COUNTRY_CODES.items()}
+
+# Display names for dropdown
+COUNTRIES = ["Australia", "USA", "United Kingdom", "India"]
 
 # Page configuration
 st.set_page_config(
@@ -33,8 +44,8 @@ st.set_page_config(
 # Initialize session state
 if "page" not in st.session_state:
     st.session_state.page = "Advisory"
-if "country" not in st.session_state:
-    st.session_state.country = "Australia"
+if "country_display" not in st.session_state:
+    st.session_state.country_display = "Australia"
 if "show_logs" not in st.session_state:
     st.session_state.show_logs = True
 if "session_id" not in st.session_state:
@@ -65,7 +76,7 @@ st.sidebar.markdown("---")
 
 # Log toggle button
 log_status = "Hide Logs" if st.session_state.show_logs else "Show Logs"
-if st.sidebar.button(f"👁️ {log_status}"):
+if st.sidebar.button(f"��️ {log_status}"):
     st.session_state.show_logs = not st.session_state.show_logs
 
 st.sidebar.markdown("---")
@@ -83,37 +94,38 @@ if page == "Advisory":
     # Country selector
     col1, col2 = st.columns([1, 3])
     with col1:
-        country = st.selectbox(
+        country_display = st.selectbox(
             "🌍 Select Country",
             COUNTRIES,
-            index=COUNTRIES.index(st.session_state.country),
+            index=COUNTRIES.index(st.session_state.country_display),
             key="country_selector"
         )
-        st.session_state.country = country
+        st.session_state.country_display = country_display
+        # Convert display name to code for database query
+        country_code = COUNTRY_DISPLAY_TO_CODE[country_display]
     
     st.markdown("---")
     
-    # Country-specific prompts and disclaimer
-    render_country_prompt(country)
-    render_disclaimer(country)
+    # Country-specific prompts and disclaimer (use display name for UI)
+    render_country_prompt(country_display)
+    render_disclaimer(country_display)
     
     st.markdown("---")
     
     # Member selection
     st.subheader("📋 Select Member Profile")
     
-    # Retrieve members from Unity Catalog
-    members_df = get_members_by_country(country)
+    # Retrieve members from Unity Catalog using country CODE
+    members_df = get_members_by_country(country_code)
     
     if members_df.empty:
-        st.warning(f"⚠️ No members found for {country}. Please add members to the database.")
+        st.warning(f"⚠️ No members found for {country_display}. Please add members to the database.")
         st.info("Run the SQL scripts in the `sql/` folder to add sample members.")
     else:
         members = members_df.to_dict('records')
         
         # Display members in a grid
         cols = st.columns(min(3, len(members)))
-        selected_idx = None
         
         for idx, member in enumerate(members):
             with cols[idx % 3]:
@@ -125,9 +137,8 @@ if page == "Advisory":
                     type="primary" if is_selected else "secondary"
                 ):
                     st.session_state.selected_member = member.get('member_id')
-                    selected_idx = idx
                 
-                render_member_card(member, is_selected, country)
+                render_member_card(member, is_selected, country_display)
         
         # Get currently selected member
         if st.session_state.selected_member:
@@ -144,7 +155,7 @@ if page == "Advisory":
         # Query input
         st.subheader("💬 Ask Your Question")
         
-        # Sample questions for the country
+        # Sample questions for the country (use display name)
         sample_questions = {
             "Australia": [
                 "How much can I withdraw from my super?",
@@ -156,7 +167,7 @@ if page == "Advisory":
                 "When can I withdraw without penalty?",
                 "How much is my required minimum distribution?"
             ],
-            "UK": [
+            "United Kingdom": [
                 "What are my pension withdrawal options?",
                 "Can I transfer my pension overseas?",
                 "What's my tax-free lump sum?"
@@ -170,7 +181,7 @@ if page == "Advisory":
         
         st.caption("💡 Sample questions:")
         cols = st.columns(3)
-        for idx, q in enumerate(sample_questions.get(country, [])[:3]):
+        for idx, q in enumerate(sample_questions.get(country_display, [])[:3]):
             with cols[idx]:
                 if st.button(q, key=f"sample_q_{idx}", use_container_width=True):
                     st.session_state.query_input = q
@@ -187,10 +198,13 @@ if page == "Advisory":
                 st.warning("Please enter a question first.")
             else:
                 with st.spinner("🔄 Processing your request..."):
+                    if not st.session_state.show_logs:
+                        st.info("⏳ Processing your request. Estimated completion: 5-10 seconds. Please hold while we finalize your result.")
                     try:
+                        # Use display name for agent interaction (matches country_content structure)
                         agent_output = run_agent_interaction(
                             user_id=st.session_state.user_id,
-                            country=country,
+                            country=country_display,
                             query_str=question,
                             extra_context=member,
                             session_id=st.session_state.session_id
@@ -201,7 +215,8 @@ if page == "Advisory":
                         st.session_state.agent_output = None
         
         # Show logs/progress
-        render_progress(st.session_state.show_logs)
+        if st.session_state.show_logs:
+            render_progress(True)
         
         # Display results
         if st.session_state.agent_output:
@@ -212,7 +227,7 @@ if page == "Advisory":
             st.success(st.session_state.agent_output["answer"])
             
             # Post-answer disclaimer
-            render_postanswer_disclaimer(country)
+            render_postanswer_disclaimer(country_display)
             
             # Citations
             st.markdown("#### 📚 Citations & References")
@@ -260,11 +275,13 @@ elif page == "Audit/Governance":
         # Filter options
         col1, col2, col3 = st.columns(3)
         with col1:
-            filter_country = st.selectbox(
+            filter_country_display = st.selectbox(
                 "Filter by Country",
                 ["All"] + COUNTRIES,
                 key="audit_country_filter"
             )
+            # Convert display name to code if not "All"
+            filter_country = None if filter_country_display == "All" else COUNTRY_DISPLAY_TO_CODE.get(filter_country_display)
         with col2:
             filter_user = st.text_input(
                 "Filter by User ID",
@@ -279,7 +296,6 @@ elif page == "Audit/Governance":
             )
         
         # Apply filters
-        country_filter = None if filter_country == "All" else filter_country
         user_filter = filter_user if filter_user else None
         session_filter = filter_session if filter_session else None
         
@@ -288,7 +304,7 @@ elif page == "Audit/Governance":
             audit_df = get_audit_log(
                 session_id=session_filter,
                 user_id=user_filter,
-                country=country_filter
+                country=filter_country
             )
         
         # Display audit table
@@ -307,12 +323,17 @@ elif page == "Audit/Governance":
                 st.metric("Total Cost", f"${total_cost:.2f}")
             with col3:
                 if 'judge_verdict' in audit_df.columns:
-                    pass_rate = (audit_df['judge_verdict'] == 'Pass').sum() / len(audit_df) * 100
+                    pass_count = (audit_df['judge_verdict'] == 'Pass').sum()
+                    pass_rate = pass_count / len(audit_df) * 100 if len(audit_df) > 0 else 0
                     st.metric("Pass Rate", f"{pass_rate:.1f}%")
+                else:
+                    st.metric("Pass Rate", "N/A")
             with col4:
                 if 'error_info' in audit_df.columns:
-                    error_count = (audit_df['error_info'] != '').sum()
+                    error_count = audit_df['error_info'].notna().sum()
                     st.metric("Errors", error_count)
+                else:
+                    st.metric("Errors", 0)
     
     # ========================================================================
     # DEVELOPER TAB
@@ -353,7 +374,7 @@ elif page == "Audit/Governance":
         
         if eval_mode == "Online (Single Query)":
             st.markdown("Test a single query immediately:")
-            eval_country = st.selectbox("Country", COUNTRIES, key="eval_country")
+            eval_country_display = st.selectbox("Country", COUNTRIES, key="eval_country")
             eval_query = st.text_input("Query", key="eval_query")
             
             if st.button("▶️ Run Online Evaluation"):
@@ -369,7 +390,7 @@ elif page == "Audit/Governance":
             **CSV Format:**
             ```
             user_id,country,query_str,age,super_balance
-            user001,Australia,"How much can I withdraw?",65,450000
+            user001,AU,"How much can I withdraw?",65,450000
             ```
             
             **Command:**
@@ -382,5 +403,5 @@ elif page == "Audit/Governance":
 
 # Footer
 st.markdown("---")
-st.caption(f"🏦 {BRANDCONFIG['brand_name']} | Session: {st.session_state.session_id[:8]}... | Support: {BRANDCONFIG['support_email']}")
+st.caption(f"🏦 {BRANDCONFIG['brand_name']} | Session: {st.session_state.session_id[:8]}... | Support: {BRANDCONFIG.get('support_email', 'support@example.com')}")
 
