@@ -84,5 +84,51 @@ def render_disclaimer(country):
 
 def render_postanswer_disclaimer(country):
     """Render post-answer disclaimer"""
-    disclaimer = POST_ANSWER_DISCLAIM
+    disclaimer = POST_ANSWER_DISCLAIMERS.get(country, POST_ANSWER_DISCLAIMERS["Australia"])
+    st.info(disclaimer)
+
+
+def render_audit_table(audit_df):
+    """Render audit logs in a table format"""
+    if audit_df.empty:
+        st.warning("No audit logs found.")
+        return
+    
+    # Select and rename columns for display
+    display_columns = ['timestamp', 'user_id', 'country', 'query_string', 'tool_used', 'judge_verdict', 'cost']
+    
+    # Check which columns actually exist
+    available_columns = [col for col in display_columns if col in audit_df.columns]
+    
+    if not available_columns:
+        st.warning("No displayable columns found in audit data.")
+        return
+    
+    display_df = audit_df[available_columns].copy()
+    
+    # Format timestamp if it exists
+    if 'timestamp' in display_df.columns:
+        display_df['timestamp'] = pd.to_datetime(display_df['timestamp']).dt.strftime('%Y-%m-%d %H:%M')
+    
+    # Format cost if it exists
+    if 'cost' in display_df.columns:
+        display_df['cost'] = display_df['cost'].apply(lambda x: f"${x:.4f}" if pd.notnull(x) else "$0.00")
+    
+    # Truncate long query strings
+    if 'query_string' in display_df.columns:
+        display_df['query_string'] = display_df['query_string'].apply(
+            lambda x: (x[:50] + '...') if isinstance(x, str) and len(x) > 50 else x
+        )
+    
+    # Display the table
+    st.dataframe(display_df, use_container_width=True, hide_index=True)
+    
+    # Add download button
+    csv = audit_df.to_csv(index=False)
+    st.download_button(
+        label="📥 Download Full Audit Log (CSV)",
+        data=csv,
+        file_name="audit_log.csv",
+        mime="text/csv"
+    )
 
