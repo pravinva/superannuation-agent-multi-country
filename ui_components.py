@@ -4,8 +4,18 @@ from config import NATIONAL_COLORS
 from country_content import COUNTRY_DISCLAIMERS, POST_ANSWER_DISCLAIMERS, COUNTRY_PROMPTS
 
 def render_logo():
-    """Render brand logo if available"""
-    st.markdown("## 🏦 Global Retirement Advisory")
+    """Render brand logo, subtitle, and title"""
+    # Check if logo.png exists in root
+    if os.path.exists("logo.png"):
+        # Display logo centered
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            st.image("logo.png", use_container_width=True)
+    
+    # Display brand name and subtitle
+    st.markdown(f"## 🏦 {BRANDCONFIG['brand_name']}")
+    st.caption(BRANDCONFIG.get('subtitle', 'Enterprise-Grade Agentic AI on Databricks'
+
 
 def render_member_card(member, is_selected, country):
     """Render a member card with country-specific colors"""
