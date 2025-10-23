@@ -91,6 +91,27 @@ st.sidebar.caption(f"User: {st.session_state.user_id}")
 
 st.session_state.page = page
 
+# Validation mode selector
+st.sidebar.markdown("---")
+st.sidebar.subheader("⚖️ Validation Mode")
+
+if "validation_mode" not in st.session_state:
+    st.session_state.validation_mode = "llm_judge"
+
+mode_options = {
+    "🎯 LLM Judge Only": "llm_judge",
+    "⚡ Hybrid (Fast + Smart)": "hybrid", 
+    "🚀 Deterministic Only": "deterministic"
+}
+
+selected = st.sidebar.radio(
+    "Choose strategy:",
+    options=list(mode_options.keys()),
+    index=0
+)
+
+st.session_state.validation_mode = mode_options[selected]
+
 # ============================================================================
 # PAGE 1: ADVISORY INTERFACE
 # ============================================================================
