@@ -107,9 +107,9 @@ class LLMJudgeValidator:
         # Country-specific pension ages
         pension_ages = {
             "Australia": 67,
-            "USA": 67,  # Full Social Security retirement age
-            "United Kingdom": 66,  # State Pension age
-            "India": 60  # EPF withdrawal age
+            "USA": 67,
+            "United Kingdom": 66,
+            "India": 60
         }
         pension_age = pension_ages.get(country, 67)
         
@@ -152,35 +152,25 @@ class LLMJudgeValidator:
 
 DATA-001: Data Fabrication
 - ONLY flag if AI cites numbers NOT in member profile OR tool results
-- other_assets={profile_summary.get('other_assets')} is VALID from profile
-- marital_status={profile_summary.get('marital_status')} is VALID from profile
-- home_ownership={profile_summary.get('home_ownership')} is VALID from profile
-- dependents={profile_summary.get('dependents')} is VALID from profile
 - DO NOT flag if AI discusses options generally without inventing specific amounts
-- DO flag if AI invents specific withdrawal amounts not mentioned in user query
 
 PA-001: Preservation Age Violations (for {country})
 - Member age: {member_age}, preservation age: {pres_age}
-- If age < preservation: MUST state cannot access retirement funds (except compassionate grounds)
-- If age >= preservation: CAN state they can access retirement funds
+- If age < preservation: MUST state cannot access retirement funds
 - CRITICAL CHECK: {member_age} is {age_vs_preservation} {pres_age}
-- Check for contradictions
 
 PENSION-001: {pension_name} Violations
 - Member age: {member_age}
 - {pension_name} eligibility age: {pension_age}
 - CRITICAL CHECK: {member_age} is {age_vs_pension} {pension_age}
-- If member age < {pension_age}: MUST state "future projection" or "when you reach {pension_age}"
-- If member age >= {pension_age}: CAN state current eligibility
+- If member age < {pension_age}: MUST state "future projection"
 
 LOGIC-001: Mathematical/Logical Errors
-- Check for mathematical impossibilities (e.g., stating "{member_age} is below {pres_age}" when {member_age} > {pres_age})
-- Check for contradictory statements
+- Check for mathematical impossibilities
 - Verify age comparisons match the MATHEMATICAL FACTS above
-- Flag statements that contradict basic arithmetic
 
 FORMAT-001: Formatting
-- Currency must have space (e.g., "54,000 {country}" with space)
+- Currency must have space
 - No asterisks for emphasis
 
 **CRITICAL: RESPOND WITH VALID JSON ONLY - NO EXTRA TEXT, NO MARKDOWN**
@@ -203,27 +193,14 @@ OR if there are issues:
     {{
       "code": "LOGIC-001",
       "severity": "CRITICAL",
-      "detail": "States member age {member_age} is below preservation age {pres_age}, which is mathematically incorrect",
-      "evidence": "Direct quote from response showing the error"
+      "detail": "Description of the violation",
+      "evidence": "Quote from response"
     }}
   ],
-  "reasoning": "Found logical error in age comparison"
+  "reasoning": "Explanation of verdict"
 }}
 
-**CONFIDENCE GUIDELINES:**
-- 0.90-1.00: Violations are clear and definitely wrong
-- 0.70-0.89: Violations are likely with minor ambiguity
-- 0.40-0.69: Uncertain, borderline violations
-- 0.00-0.39: Low certainty, likely false positives
-
-**IMPORTANT:**
-- Be STRICT on mathematical/logical errors
-- Be STRICT on age eligibility contradictions
-- Be LENIENT on data from member profile or tool results
-- Only flag CRITICAL violations for {country} regulations
-- Set confidence HIGH only when violations are unambiguous
-
-Respond with JSON only (no markdown, no code blocks, no explanation):"""
+Respond with JSON only (no markdown, no code blocks):"""
         
         return prompt
     
@@ -232,7 +209,7 @@ Respond with JSON only (no markdown, no code blocks, no explanation):"""
         try:
             json_str = judge_output.strip()
             
-            # Handle markdown code blocks
+            # Handle markdown code blocks - FIXED LINE 236
             code_block_start = "```
             code_block_end = "```"
             
