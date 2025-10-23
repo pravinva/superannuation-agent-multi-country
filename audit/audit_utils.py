@@ -11,17 +11,18 @@ from config import get_governance_table_path, SQL_WAREHOUSE_ID
 
 w = WorkspaceClient()
 
+
 def get_warehouse_id():
     """Get warehouse ID from config"""
     if not SQL_WAREHOUSE_ID or SQL_WAREHOUSE_ID == "YOUR_WAREHOUSE_ID_HERE":
         raise ValueError("Please set SQL_WAREHOUSE_ID in config.py")
     return SQL_WAREHOUSE_ID
 
+
 def execute_query(query):
     """Execute SQL query"""
     try:
         warehouse_id = get_warehouse_id()
-        
         statement = w.statement_execution.execute_statement(
             warehouse_id=warehouse_id,
             statement=query,
@@ -39,23 +40,25 @@ def execute_query(query):
                 return df
         
         return pd.DataFrame()
+    
     except Exception as e:
         print(f"Error executing query: {e}")
         return pd.DataFrame()
 
+
 def log_query_event(
     user_id,
-    country,
+    session_id,          # FIXED: Moved session_id to 2nd position
+    country,             # FIXED: Moved country to 3rd position
     query_string,
-    cost,
     agent_response,
     result_preview,
     citations,
     tool_used,
     judge_response,
     judge_verdict,
-    error_info,
-    session_id=None
+    error_info="",
+    cost=0.0
 ):
     """Log to governance table"""
     event_id = str(uuid.uuid4())
@@ -93,9 +96,11 @@ def log_query_event(
         """
         
         execute_query(query)
-        print(f"✓ Logged event to governance table")
+        print(f"✓ Logged event {event_id} to governance table")
+        
     except Exception as e:
         print(f"Error logging to governance table: {e}")
+
 
 def get_audit_log(session_id=None, user_id=None, country=None):
     """Retrieve audit logs"""
@@ -117,9 +122,11 @@ def get_audit_log(session_id=None, user_id=None, country=None):
         query += " ORDER BY timestamp DESC LIMIT 100"
         
         return execute_query(query)
+    
     except Exception as e:
         print(f"Error retrieving audit log: {e}")
         return pd.DataFrame()
+
 
 def get_query_cost(event_row):
     """Get cost for a specific query event"""
