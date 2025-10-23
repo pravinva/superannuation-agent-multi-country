@@ -1,4 +1,4 @@
-# agent.py - Multi-Country Retirement Advisor with Hyper-Personalization
+# agent.py - FINAL: Currency Codes (AUD) + Hyper-Personalization
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.service.serving import ChatMessage, ChatMessageRole
 from tools import get_country_tool
@@ -131,7 +131,16 @@ class MultiCountryAdvisorAgent:
         member_full_name = profile['name']
         member_first_name = member_full_name.split()[0] if member_full_name else 'Member'
 
-        # Anonymization (kept for backwards compatibility, but disabled by default for personalization)
+        # Currency code based on country
+        currency_codes = {
+            "Australia": "AUD",
+            "USA": "USD",
+            "United Kingdom": "GBP",
+            "India": "INR"
+        }
+        currency_code = currency_codes.get(self.country, "AUD")
+
+        # Anonymization
         real_name = profile['name']
         if anonymize:
             member_token = f"Member {member_id[-4:]}"
@@ -168,7 +177,7 @@ class MultiCountryAdvisorAgent:
 Name: {profile['name']}
 First Name: {member_first_name}
 Age: {profile.get('age')}
-Balance: ${profile.get('super_balance', 0):,}
+Balance: {currency_code} {profile.get('super_balance', 0):,}
 Employment: {profile.get('employment_status')}
 Marital Status: {profile.get('marital_status')}
 Country: {self.country}
@@ -187,9 +196,7 @@ USER QUESTION:
 
         synthesis_start = time.time()
 
-        # ===================================================================
-        # RETRY LOOP: Try up to 3 times (1 initial + 2 retries)
-        # ===================================================================
+        # Retry loop
         MAX_RETRIES = 2
         attempt = 0
         validation_passed = False
@@ -205,7 +212,7 @@ USER QUESTION:
                 print(f"RETRY REASON: Judge found violations")
             print(f"{'='*70}\n")
 
-            # Stage 1: Situation (HYPER-PERSONALIZED)
+            # Stage 1: Situation (HYPER-PERSONALIZED + CURRENCY CODES)
             if status_callback:
                 status_callback("synthesis_stage", {"stage": 1, "task": f"Situation ({attempt_label})"})
 
@@ -217,16 +224,16 @@ Write EXACTLY 2 sentences addressing {member_first_name} DIRECTLY by their first
 CRITICAL PERSONALIZATION RULES:
 - Start with: "{member_first_name}, you are {profile.get('age')} years old..."
 - Use DIRECT address throughout (you/your not they/their)
-- Reference their ACTUAL balance: ${profile.get('super_balance', 0):,}
-- Make it conversational and personal
-- Example: "John, you are 56 years old with a superannuation balance of $450,000. You are currently employed full-time and approaching your preservation age of 60."
+- Reference their ACTUAL balance using currency code: {currency_code} {profile.get('super_balance', 0)}
+- Example: "Angela, you are 60 years old with a superannuation balance of AUD 295000."
 
-FORMATTING RULES:
+CRITICAL FORMATTING RULES (TO PREVENT TEXT JUMBLING):
+- ALWAYS use currency codes: "{currency_code} 295000" NOT "$295,000" or "$295000"
+- NO dollar signs ($) - they cause text jumbling with commas
+- NO commas in numbers within sentences - write "295000" not "295,000"
+- Use spaces around currency: "{currency_code} 295000 balance" NOT "{currency_code}295000balance"
 - EXACTLY 2 sentences, max 40 words each
 - NO asterisks or special characters
-- ALWAYS use spaces: "$100,000 tax-free" NOT "$100,000tax-free"
-- ALWAYS use commas: "100,000" NOT "100000"
-- ALWAYS spaces around math: "$ 32,500 - $ 37,000" NOT "$32,500-$37,000"
 
 {validation_feedback if validation_feedback else ''}
 
@@ -253,8 +260,8 @@ RULES:
 - Max 30 words per bullet
 - Use actual numbers from tool results
 - Use "you/your" language (continue personalization)
-- ALWAYS use spaces: "$100,000 tax-free" NOT "$100,000tax-free"
-- ALWAYS use commas: "100,000" NOT "100000"
+- ALWAYS use currency codes: "{currency_code} 100000" NOT "$100,000"
+- NO dollar signs or commas in numbers
 
 {validation_feedback if validation_feedback else ''}
 
@@ -284,8 +291,8 @@ RULES:
 - EXACTLY 2 numbered items
 - ONE sentence each, max 35 words
 - Continue using "you/your" personalization
-- ALWAYS use spaces: "$100,000 tax-free" NOT "$100,000tax-free"
-- ALWAYS use commas: "100,000" NOT "100000"
+- ALWAYS use currency codes: "{currency_code} 100000" NOT "$100,000"
+- NO dollar signs or commas in numbers
 
 {validation_feedback if validation_feedback else ''}
 
@@ -298,17 +305,14 @@ Write directly (no headers)."""
             )
             timings[f'recommendations_attempt_{attempt}'] = rec_time
 
-            # ===================================================================
-            # VALIDATION: Deterministic (fast) → LLM Judge (accurate)
-            # ===================================================================
-
+            # Validation
             if enable_validation:
                 if status_callback:
                     status_callback("validation_start", f"Validating ({attempt_label})...")
 
                 full_response = f"{situation}\n\n{insights}\n\n{recommendations}"
 
-                # Phase 1: Fast deterministic check
+                # Deterministic check
                 print("🔧 Running deterministic pre-check...")
                 det_result = DeterministicValidator.validate_response(
                     response_text=full_response,
@@ -325,7 +329,7 @@ Write directly (no headers)."""
                     validation_result['fast_fail'] = True
                     validation_passed = False
                 else:
-                    # Phase 2: LLM Judge validation
+                    # LLM Judge
                     print("⚖️  Running LLM Judge validation...")
                     try:
                         validation_result = self.validator.validate_response(
@@ -335,7 +339,6 @@ Write directly (no headers)."""
                             user_query=user_query
                         )
                         validation_passed = validation_result.get('passed', True)
-
                     except Exception as e:
                         print(f"⚠️  LLM Judge failed: {e}")
                         validation_result = det_result
@@ -367,15 +370,14 @@ CRITICAL INSTRUCTIONS FOR THIS RETRY:
 1. Fix ALL violations listed above
 2. Use ONLY data from member profile and tool results
 3. Maintain hyper-personalization: Address {member_first_name} directly
-4. Always use proper spacing: "$100,000 tax-free" NOT "$100,000tax-free"
-5. Be precise about eligibility thresholds
+4. ALWAYS use currency codes ({currency_code}) NOT dollar signs ($)
+5. NO commas in numbers within sentences
 """
 
                     attempt += 1
 
                     if status_callback:
                         status_callback("retry", {"attempt": attempt + 1, "violations": len(violations)})
-
                 else:
                     break
             else:
@@ -423,7 +425,7 @@ CRITICAL INSTRUCTIONS FOR THIS RETRY:
 
 *Response for {self.country} | Session: {self.session_id[:8]} | Validated: {attempt + 1} attempt(s)*"""
 
-        # De-anonymize (only if anonymization was enabled)
+        # De-anonymize
         if anonymize and member_token:
             response = response.replace(member_token, real_name)
             print(f"🔓 Restored: '{member_token}' → '{real_name}'")

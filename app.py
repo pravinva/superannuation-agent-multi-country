@@ -1,4 +1,4 @@
-# app.py - COMPLETE WORKING VERSION with Member Card Colors & Selection Fix
+# app.py - FINAL VERSION (Works with simplified cards + currency codes)
 """
 Multi-Country Retirement Advisory Application
 Main Streamlit application with two-page navigation
@@ -29,10 +29,10 @@ COUNTRY_CODES = {
     "IN": "India"
 }
 
-# Reverse mapping for display to code
+# Reverse mapping
 COUNTRY_DISPLAY_TO_CODE = {v: k for k, v in COUNTRY_CODES.items()}
 
-# Display names for dropdown
+# Display names
 COUNTRIES = ["Australia", "USA", "United Kingdom", "India"]
 
 # Page configuration
@@ -63,7 +63,7 @@ if "members_list" not in st.session_state:
 if "current_country_code" not in st.session_state:
     st.session_state.current_country_code = None
 
-# Sidebar navigation
+# Sidebar
 if os.path.exists("logo.png"):
     st.sidebar.image("logo.png", use_column_width=True)
 
@@ -79,7 +79,6 @@ page = st.sidebar.radio(
 
 st.sidebar.markdown("---")
 
-# Log toggle with checkbox
 st.session_state.show_logs = st.sidebar.checkbox(
     "👀 Show Processing Logs",
     value=st.session_state.show_logs,
@@ -99,10 +98,8 @@ st.session_state.page = page
 if page == "Advisory":
     render_logo()
 
-    # Country selector with flags as horizontal radio buttons
     st.subheader("🌍 Select Country")
 
-    # Country options with flag emojis
     country_options = {
         "🇦🇺 Australia": "Australia",
         "🇺🇸 USA": "USA",
@@ -110,7 +107,6 @@ if page == "Advisory":
         "🇮🇳 India": "India"
     }
 
-    # Radio buttons horizontal
     selected_country_with_flag = st.radio(
         "Choose your country:",
         options=list(country_options.keys()),
@@ -119,16 +115,13 @@ if page == "Advisory":
         label_visibility="collapsed"
     )
 
-    # Get the country display name without flag
     country_display = country_options[selected_country_with_flag]
     st.session_state.country_display = country_display
 
-    # Convert display name to code for database query
     country_code = COUNTRY_DISPLAY_TO_CODE[country_display]
 
     st.markdown("---")
 
-    # Consolidated country welcome section
     prompt_text = COUNTRY_PROMPTS.get(country_display, COUNTRY_PROMPTS["Australia"])
     disclaimer = COUNTRY_DISCLAIMERS.get(country_display, COUNTRY_DISCLAIMERS["Australia"])
     render_country_welcome(country_display, prompt_text, disclaimer)
@@ -136,24 +129,24 @@ if page == "Advisory":
     st.markdown("---")
 
     # ========================================================================
-    # MEMBER SELECTION - FIXED VERSION (No Reload, Country Colors)
+    # MEMBER SELECTION - FIXED (No Reload, Simplified Cards)
     # ========================================================================
     st.subheader("📋 Select Member Profile")
 
-    # Load members ONCE per country (prevents reload/shuffle)
+    # Load members ONCE per country
     if st.session_state.current_country_code != country_code:
         members_df = get_members_by_country(country_code)
         st.session_state.members_list = members_df.to_dict('records') if not members_df.empty else []
         st.session_state.current_country_code = country_code
-        st.session_state.selected_member = None  # Reset selection on country change
+        st.session_state.selected_member = None
 
     members = st.session_state.members_list
 
     if not members:
-        st.warning(f"⚠️ No members found for {country_display}. Please add members to the database.")
-        st.info("Run the SQL scripts in the `sql/` folder to add sample members.")
+        st.warning(f"⚠️ No members found for {country_display}.")
+        st.info("Run SQL scripts to add members.")
     else:
-        # Display members in grid (no reload on click)
+        # Display in grid
         cols = st.columns(min(3, len(members)))
 
         for idx, member in enumerate(members):
@@ -161,20 +154,19 @@ if page == "Advisory":
                 member_id = member.get('member_id')
                 is_selected = (st.session_state.selected_member == member_id)
 
-                # Button for selection
                 button_type = "primary" if is_selected else "secondary"
                 button_label = f"{'✓ ' if is_selected else ''}Select {member.get('name', 'Unknown')}"
 
                 if st.button(
                     button_label,
-                    key=f"btn_{member_id}_{country_code}",  # Include country in key
+                    key=f"btn_{member_id}_{country_code}",
                     use_container_width=True,
                     type=button_type
                 ):
                     st.session_state.selected_member = member_id
-                    st.rerun()  # Lightweight rerun to update UI
+                    st.rerun()
 
-                # Render card with colors - CRITICAL: passes is_selected boolean
+                # Simplified card rendering
                 render_member_card(member, is_selected, country_display)
 
         # Get selected member
@@ -184,7 +176,6 @@ if page == "Advisory":
                 members[0]
             )
         else:
-            # Auto-select first member
             member = members[0]
             st.session_state.selected_member = member.get('member_id')
 
@@ -193,7 +184,6 @@ if page == "Advisory":
         # Query input
         st.subheader("💬 Ask Your Question")
 
-        # Sample questions for the country
         sample_questions = {
             "Australia": [
                 "💰 What's the maximum amount I can withdraw from my superannuation this year?",
@@ -231,30 +221,27 @@ if page == "Advisory":
             key="query_input"
         )
 
-        # Get recommendation button
+        # Get recommendation
         if st.button("🚀 Get Recommendation", type="primary", use_container_width=True):
             if not question:
                 st.warning("Please enter a question first.")
             else:
                 with st.spinner("🔄 Processing your request..."):
-                    # Show progress message if logs are hidden
                     if not st.session_state.show_logs:
                         progress_placeholder = st.empty()
                         progress_placeholder.info("⏳ Processing your request. Estimated completion: 5-10 seconds.")
 
                     try:
-                        # Call agent_query with real-time progress
                         answer, citations, response_dict, judge_resp, judge_verdict, error_info, tools_called = agent_query(
                             user_id=st.session_state.user_id,
                             country=country_display,
                             query_str=question,
-                            extra_context=member,  # Pass full member profile including name
+                            extra_context=member,
                             session_id=st.session_state.session_id,
                             judge_llm_fn=None,
                             mlflow_experiment_path=None
                         )
 
-                        # Build agent_output dict for compatibility
                         agent_output = {
                             "answer": answer,
                             "citations": citations,
@@ -268,7 +255,6 @@ if page == "Advisory":
 
                         st.session_state.agent_output = agent_output
 
-                        # Clear progress message
                         if not st.session_state.show_logs:
                             progress_placeholder.empty()
 
@@ -280,7 +266,7 @@ if page == "Advisory":
                         if not st.session_state.show_logs:
                             progress_placeholder.empty()
 
-        # Show logs IF enabled
+        # Show logs if enabled
         if st.session_state.show_logs:
             member_data = member if st.session_state.agent_output else None
             tools_called = st.session_state.agent_output.get("tools_called", []) if st.session_state.agent_output else []
@@ -291,13 +277,10 @@ if page == "Advisory":
             st.markdown("---")
             st.subheader("📊 Recommendation")
 
-            # Main answer
             st.success(st.session_state.agent_output["answer"])
 
-            # Post-answer disclaimer
             render_postanswer_disclaimer(country_display)
 
-            # Citations
             st.markdown("#### 📚 Citations & References")
             citations = st.session_state.agent_output.get("citations", [])
             if citations:
@@ -306,7 +289,6 @@ if page == "Advisory":
             else:
                 st.caption("No citations available.")
 
-            # Judge validation (if available)
             if st.session_state.agent_output.get("judge_verdict"):
                 with st.expander("🔍 Quality Validation Details"):
                     verdict = st.session_state.agent_output["judge_verdict"]
@@ -321,7 +303,7 @@ if page == "Advisory":
                         st.text(st.session_state.agent_output["judge_response"])
 
 # ============================================================================
-# PAGE 2: AUDIT/GOVERNANCE & DEVELOPER
+# PAGE 2: AUDIT/GOVERNANCE
 # ============================================================================
 
 elif page == "Audit/Governance":
@@ -329,9 +311,6 @@ elif page == "Audit/Governance":
 
     tab1, tab2 = st.tabs(["🔒 Governance", "🛠️ Developer"])
 
-    # ========================================================================
-    # GOVERNANCE TAB
-    # ========================================================================
     with tab1:
         st.header("Audit Trail & Compliance")
         st.markdown(f"""
@@ -340,7 +319,6 @@ All user interactions are logged to Unity Catalog for compliance and governance.
 **Table:** `{ARCHITECTURECONTENT.get('infra_details', 'Unity Catalog governance table')}`
         """)
 
-        # Filter options
         col1, col2, col3 = st.columns(3)
 
         with col1:
@@ -350,7 +328,6 @@ All user interactions are logged to Unity Catalog for compliance and governance.
                 key="audit_country_filter"
             )
 
-        # Convert display name to code if not "All"
         filter_country = None if filter_country_display == "All" else COUNTRY_DISPLAY_TO_CODE.get(filter_country_display)
 
         with col2:
@@ -367,11 +344,9 @@ All user interactions are logged to Unity Catalog for compliance and governance.
                 key="audit_session_filter"
             )
 
-        # Apply filters
         user_filter = filter_user if filter_user else None
         session_filter = filter_session if filter_session else None
 
-        # Retrieve audit logs
         with st.spinner("Loading audit logs..."):
             audit_df = get_audit_log(
                 session_id=session_filter,
@@ -379,10 +354,8 @@ All user interactions are logged to Unity Catalog for compliance and governance.
                 country=filter_country
             )
 
-        # Display audit table
         render_audit_table(audit_df)
 
-        # Summary metrics
         if not audit_df.empty:
             st.markdown("---")
             st.subheader("📈 Summary Metrics")
@@ -411,16 +384,12 @@ All user interactions are logged to Unity Catalog for compliance and governance.
                 else:
                     st.metric("Errors", 0)
 
-    # ========================================================================
-    # DEVELOPER TAB
-    # ========================================================================
     with tab2:
         st.header("MLflow Experiment Tracking & Evaluation")
         st.markdown("""
 View MLflow experiment runs and trigger evaluations.
         """)
 
-        # MLflow experiment selector
         exp_type = st.radio(
             "Select Experiment Type",
             ["Production", "Offline Evaluation"],
@@ -432,13 +401,11 @@ View MLflow experiment runs and trigger evaluations.
 
         st.info(f"📊 Viewing: `{exp_path}`")
 
-        # Display MLflow runs
         with st.spinner("Loading MLflow runs..."):
             show_mlflow_runs(exp_path=exp_path)
 
         st.markdown("---")
 
-        # Evaluation tools
         st.subheader("🧪 Run Evaluation")
 
         eval_mode = st.radio(
@@ -457,7 +424,7 @@ View MLflow experiment runs and trigger evaluations.
                     st.info("Online evaluation triggered. Check MLflow for results.")
                 else:
                     st.warning("Please enter a query.")
-        else:  # Offline mode
+        else:
             st.markdown("""
 Run batch evaluation from a CSV file:
 
