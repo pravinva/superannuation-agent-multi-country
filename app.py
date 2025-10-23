@@ -12,7 +12,7 @@ from config import BRANDCONFIG, MLFLOW_PROD_EXPERIMENT_PATH, ARCHITECTURECONTENT
 from ui_components import (
     render_logo, render_member_card, render_question_card,
     render_country_welcome, render_postanswer_disclaimer,
-    render_audit_table
+    render_audit_table, render_structured_response
 )
 from progress_utils import render_progress
 from audit.audit_utils import get_audit_log
@@ -60,7 +60,6 @@ if "selected_member" not in st.session_state:
     st.session_state.selected_member = None
 
 # Sidebar navigation
-# Add logo to sidebar FIRST
 if os.path.exists("logo.png"):
     st.sidebar.image("logo.png", use_column_width=True)
 
@@ -124,8 +123,7 @@ if page == "Advisory":
     
     st.markdown("---")
     
-    # Consolidated country welcome section (replaces multiple info boxes)
-    # FIX APPLIED: Pass all 3 required arguments
+    # Consolidated country welcome section
     prompt_text = COUNTRY_PROMPTS.get(country_display, COUNTRY_PROMPTS["Australia"])
     disclaimer = COUNTRY_DISCLAIMERS.get(country_display, COUNTRY_DISCLAIMERS["Australia"])
     render_country_welcome(country_display, prompt_text, disclaimer)
@@ -156,6 +154,8 @@ if page == "Advisory":
                     type="primary" if is_selected else "secondary"
                 ):
                     st.session_state.selected_member = member.get('member_id')
+                    st.rerun()  # Rerun to update card display
+                
                 render_member_card(member, is_selected, country_display)
         
         # Get currently selected member
@@ -173,7 +173,7 @@ if page == "Advisory":
         # Query input
         st.subheader("💬 Ask Your Question")
         
-        # Sample questions for the country with better descriptions and emojis
+        # Sample questions for the country
         sample_questions = {
             "Australia": [
                 "💰 What's the maximum amount I can withdraw from my superannuation this year?",
@@ -183,10 +183,10 @@ if page == "Advisory":
             "USA": [
                 "💵 How much can I safely withdraw from my 401(k) without facing penalties?",
                 "📅 What are the required minimum distributions (RMDs) for my age?",
-                "�� Can I withdraw from my 401(k) early for education or home purchase?"
+                "🎓 Can I withdraw from my 401(k) early for education or home purchase?"
             ],
             "United Kingdom": [
-                "💷 How much of my pension can I take as a tax-free lump sum?",
+                "�� How much of my pension can I take as a tax-free lump sum?",
                 "✈️ Can I transfer my UK pension to another country if I move abroad?",
                 "⏰ What are my options for accessing my pension before state pension age?"
             ],
@@ -216,13 +216,8 @@ if page == "Advisory":
                 st.warning("Please enter a question first.")
             else:
                 with st.spinner("🔄 Processing your request..."):
-                    # Show progress message if logs are hidden
-                    if not st.session_state.show_logs:
-                        progress_placeholder = st.empty()
-                        progress_placeholder.info("⏳ Processing your request. Estimated completion: 5-10 seconds.")
-                    
                     try:
-                        # Use display name for agent interaction
+                        # Run agent interaction
                         agent_output = run_agent_interaction(
                             user_id=st.session_state.user_id,
                             country=country_display,
@@ -232,27 +227,30 @@ if page == "Advisory":
                         )
                         st.session_state.agent_output = agent_output
                         
-                        # Clear progress message
-                        if not st.session_state.show_logs:
-                            progress_placeholder.empty()
+                        # Show progress AFTER agent completes (if logs enabled)
+                        if st.session_state.show_logs:
+                            tools_called = agent_output.get('tools_called', [])
+                            render_progress(
+                                member_data=member, 
+                                tools_called=tools_called, 
+                                show_logs=True
+                            )
                     
                     except Exception as e:
                         st.error(f"An error occurred: {str(e)}")
                         st.session_state.agent_output = None
-                        if not st.session_state.show_logs:
-                            progress_placeholder.empty()
-                
-                # Show logs IF enabled
-                if st.session_state.show_logs:
-                    render_progress(True)
         
         # Display results
         if st.session_state.agent_output:
             st.markdown("---")
-            st.subheader("📊 Recommendation")
+            st.subheader("📊 Your Personalized Recommendation")
             
-            # Main answer
-            st.success(st.session_state.agent_output["answer"])
+            # Check if we have structured response
+            if 'response_dict' in st.session_state.agent_output:
+                render_structured_response(st.session_state.agent_output['response_dict'])
+            else:
+                # Fallback to plain answer
+                st.success(st.session_state.agent_output["answer"])
             
             # Post-answer disclaimer
             render_postanswer_disclaimer(country_display)
@@ -288,9 +286,7 @@ elif page == "Audit/Governance":
     
     tab1, tab2 = st.tabs(["🔒 Governance", "🛠️ Developer"])
     
-    # ========================================================================
-    # GOVERNANCE TAB
-    # ========================================================================
+    # Governance Tab
     with tab1:
         st.header("Audit Trail & Compliance")
         st.markdown(f"""
@@ -307,7 +303,6 @@ elif page == "Audit/Governance":
                 ["All"] + COUNTRIES,
                 key="audit_country_filter"
             )
-            # Convert display name to code if not "All"
             filter_country = None if filter_country_display == "All" else COUNTRY_DISPLAY_TO_CODE.get(filter_country_display)
         
         with col2:
@@ -324,7 +319,6 @@ elif page == "Audit/Governance":
                 key="audit_session_filter"
             )
         
-        # Apply filters
         user_filter = filter_user if filter_user else None
         session_filter = filter_session if filter_session else None
         
@@ -336,7 +330,6 @@ elif page == "Audit/Governance":
                 country=filter_country
             )
         
-        # Display audit table
         render_audit_table(audit_df)
         
         # Summary metrics
@@ -368,16 +361,11 @@ elif page == "Audit/Governance":
                 else:
                     st.metric("Errors", 0)
     
-    # ========================================================================
-    # DEVELOPER TAB
-    # ========================================================================
+    # Developer Tab
     with tab2:
         st.header("MLflow Experiment Tracking & Evaluation")
-        st.markdown("""
-        View MLflow experiment runs and trigger evaluations.
-        """)
+        st.markdown("View MLflow experiment runs and trigger evaluations.")
         
-        # MLflow experiment selector
         exp_type = st.radio(
             "Select Experiment Type",
             ["Production", "Offline Evaluation"],
@@ -388,14 +376,12 @@ elif page == "Audit/Governance":
         exp_path = MLFLOW_PROD_EXPERIMENT_PATH if exp_type == "Production" else st.session_state.get("mlflow_offline_path", "/Shared/experiments/offline/retirement-eval")
         st.info(f"📊 Viewing: `{exp_path}`")
         
-        # Display MLflow runs
         with st.spinner("Loading MLflow runs..."):
             show_mlflow_runs(exp_path=exp_path)
         
         st.markdown("---")
         
-        # Evaluation tools
-        st.subheader("🧪 Run Evaluation")
+        st.subheader("�� Run Evaluation")
         eval_mode = st.radio(
             "Evaluation Mode",
             ["Online (Single Query)", "Offline (Batch CSV)"],
@@ -413,19 +399,14 @@ elif page == "Audit/Governance":
                 else:
                     st.warning("Please enter a query.")
         
-        else:  # Offline mode
+        else:
             st.markdown("""
-            Run batch evaluation from a CSV file:
+            Run batch evaluation from a CSV file.
             
             **CSV Format:**
             ```
             user_id,country,query_str,age,super_balance
             user001,AU,"How much can I withdraw?",65,450000
-            ```
-            
-            **Command:**
-            ```
-            python run_evaluation.py --mode offline --csv_path /path/to/eval_data.csv
             ```
             """)
             st.info("Upload CSV and run evaluation from Databricks notebook or terminal.")
