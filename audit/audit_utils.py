@@ -1,5 +1,5 @@
 # audit/audit_utils.py
-"""Audit logging - Uses hardcoded SQL Warehouse ID"""
+"""Audit logging with proper parameter handling"""
 
 import uuid
 import datetime
@@ -11,13 +11,11 @@ from config import get_governance_table_path, SQL_WAREHOUSE_ID
 
 w = WorkspaceClient()
 
-
 def get_warehouse_id():
     """Get warehouse ID from config"""
     if not SQL_WAREHOUSE_ID or SQL_WAREHOUSE_ID == "YOUR_WAREHOUSE_ID_HERE":
         raise ValueError("Please set SQL_WAREHOUSE_ID in config.py")
     return SQL_WAREHOUSE_ID
-
 
 def execute_query(query):
     """Execute SQL query"""
@@ -45,11 +43,10 @@ def execute_query(query):
         print(f"Error executing query: {e}")
         return pd.DataFrame()
 
-
 def log_query_event(
     user_id,
-    session_id,          # FIXED: Moved session_id to 2nd position
-    country,             # FIXED: Moved country to 3rd position
+    session_id,
+    country,
     query_string,
     agent_response,
     result_preview,
@@ -57,10 +54,27 @@ def log_query_event(
     tool_used,
     judge_response,
     judge_verdict,
-    error_info="",
+    error_info,
     cost=0.0
 ):
-    """Log to governance table"""
+    """
+    Log query event to governance table
+    
+    Args:
+        user_id: User identifier
+        session_id: Session UUID
+        country: Country name (Australia, USA, United Kingdom, India)
+        query_string: User's query
+        agent_response: Full LLM response
+        result_preview: Summary/preview of result
+        citations: List of citations
+        tool_used: Name of tool/calculator used
+        judge_response: Judge LLM response
+        judge_verdict: Pass/Reject/Review/ERROR
+        error_info: Error details if any
+        cost: Cost of query (default 0.0)
+    """
+    
     event_id = str(uuid.uuid4())
     timestamp = datetime.datetime.utcnow().isoformat()
     
@@ -68,42 +82,64 @@ def log_query_event(
         table_path = get_governance_table_path()
         
         def escape(s):
-            return str(s).replace("'", "''") if s else ""
+            """Escape single quotes for SQL"""
+            if s is None:
+                return ""
+            return str(s).replace("'", "''").replace("\\", "\\\\")
         
-        citations_str = str(citations) if citations else "[]"
+        # Convert citations to string
+        if isinstance(citations, list):
+            citations_str = str(citations)
+        else:
+            citations_str = str(citations) if citations else "[]"
+        
+        # Truncate long responses
+        if agent_response and len(agent_response) > 15000:
+            agent_response = agent_response[:15000] + "... [truncated]"
         
         query = f"""
-        INSERT INTO {table_path} (
-            event_id, timestamp, user_id, session_id, country, query_string,
-            agent_response, result_preview, cost, citations, tool_used,
-            judge_response, judge_verdict, error_info
-        ) VALUES (
-            '{event_id}',
-            '{timestamp}',
-            '{escape(user_id)}',
-            '{escape(session_id)}',
-            '{escape(country)}',
-            '{escape(query_string)}',
-            '{escape(agent_response)}',
-            '{escape(result_preview)}',
-            {cost},
-            '{escape(citations_str)}',
-            '{escape(tool_used)}',
-            '{escape(judge_response)}',
-            '{escape(judge_verdict)}',
-            '{escape(error_info)}'
-        )
-        """
+INSERT INTO {table_path} (
+    event_id, timestamp, user_id, session_id, country, query_string,
+    agent_response, result_preview, cost, citations, tool_used,
+    judge_response, judge_verdict, error_info
+) VALUES (
+    '{event_id}',
+    '{timestamp}',
+    '{escape(user_id)}',
+    '{escape(session_id)}',
+    '{escape(country)}',
+    '{escape(query_string)}',
+    '{escape(agent_response)}',
+    '{escape(result_preview)}',
+    {cost},
+    '{escape(citations_str)}',
+    '{escape(tool_used)}',
+    '{escape(judge_response)}',
+    '{escape(judge_verdict)}',
+    '{escape(error_info)}'
+)
+"""
         
         execute_query(query)
-        print(f"✓ Logged event {event_id} to governance table")
+        print(f"✓ Logged event {event_id[:8]} to governance table")
         
     except Exception as e:
-        print(f"Error logging to governance table: {e}")
-
+        print(f"❌ Error logging to governance table: {e}")
+        import traceback
+        traceback.print_exc()
 
 def get_audit_log(session_id=None, user_id=None, country=None):
-    """Retrieve audit logs"""
+    """
+    Retrieve audit logs with optional filters
+    
+    Args:
+        session_id: Filter by session ID
+        user_id: Filter by user ID
+        country: Filter by country
+    
+    Returns:
+        DataFrame with audit records
+    """
     try:
         table_path = get_governance_table_path()
         query = f"SELECT * FROM {table_path}"
@@ -126,7 +162,6 @@ def get_audit_log(session_id=None, user_id=None, country=None):
     except Exception as e:
         print(f"Error retrieving audit log: {e}")
         return pd.DataFrame()
-
 
 def get_query_cost(event_row):
     """Get cost for a specific query event"""

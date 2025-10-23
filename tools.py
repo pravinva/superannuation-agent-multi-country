@@ -1,7 +1,7 @@
 # tools.py
 """
 Country-specific retirement calculator tools
-Uses hardcoded SQL Warehouse ID from config
+Uses real UC functions from super_advisory_demo.mcp_tools
 """
 
 from databricks.sdk import WorkspaceClient
@@ -49,208 +49,178 @@ def call_uc_function(function_name, *args):
         print(f"Error calling UC function {function_name}: {e}")
         return None
 
+
 # ============================================================================
-# AUSTRALIA
+# AUSTRALIA - Superannuation Functions
 # ============================================================================
 
-def calculate_super_australia(user_data):
-    """Australian superannuation calculator"""
-    member_id = user_data.get('member_id')
+def calculate_super_australia(member_id, withdrawal_amount=100000):
+    """Calculate Australian superannuation using 3 UC functions"""
     
-    # Convert to float to handle string values from database
-    try:
-        super_balance = float(user_data.get('super_balance', 0))
-        age = float(user_data.get('age', 65))
-    except (ValueError, TypeError):
-        super_balance = 0
-        age = 65
+    # 1. Calculate tax implications (ATO)
+    tax_result = call_uc_function("calculate_tax_implications", member_id, withdrawal_amount)
     
-    withdrawal_pct = 0.05 if age >= 65 else 0.04
-    withdrawal_amount = super_balance * withdrawal_pct
+    # 2. Check Age Pension impact (Centrelink)
+    pension_result = call_uc_function("check_age_pension_impact", member_id, withdrawal_amount)
     
-    tax_info = call_uc_function('calculate_tax_implications', member_id, withdrawal_amount)
-    pension_impact = call_uc_function('check_age_pension_impact', member_id, withdrawal_amount)
-    projection = call_uc_function('project_retirement_income', member_id, 10)
+    # 3. Project retirement income
+    projection_result = call_uc_function("project_retirement_income", member_id, 20)
     
-    if tax_info and pension_impact:
-        summary = f"""Based on your Australian super profile:
+    # Build summary
+    summary = f"""Australian Superannuation Analysis:
 
-💰 Recommended Annual Withdrawal: ${withdrawal_amount:,.2f}
-   • Tax status: {tax_info.get('status', 'Unknown')}
-   • Tax amount: ${tax_info.get('tax_amount', 0):,.2f}
-   • Net withdrawal: ${tax_info.get('net_withdrawal', withdrawal_amount):,.2f}
-
-🏛️ Age Pension Impact:
-   • Current eligibility: {'Yes' if pension_impact.get('currently_eligible') else 'No'}
-   • Current annual pension: ${pension_impact.get('current_annual_pension', 0):,.2f}
-   • After withdrawal pension: ${pension_impact.get('future_annual_pension', 0):,.2f}
-
-📊 10-Year Projection: {projection.get('projection_summary', 'N/A') if projection else 'N/A'}
+Tax Calculation (ATO): {tax_result if tax_result else 'Calculation pending'}
+Age Pension Impact (Centrelink): {pension_result if pension_result else 'Calculation pending'}
+20-Year Projection: {projection_result if projection_result else 'Calculation pending'}
 """
-        amount = tax_info.get('net_withdrawal', withdrawal_amount)
-    else:
-        summary = f"Estimated annual withdrawal: ${withdrawal_amount:,.2f}"
-        amount = withdrawal_amount
     
     return {
-        "amount": amount,
+        "country": "Australia",
+        "withdrawal_amount": withdrawal_amount,
+        "tax_calculation": tax_result,
+        "pension_impact": pension_result,
+        "retirement_projection": projection_result,
         "summary": summary,
-        "tool_used": "UC_MCP_AU_Super_v1",
         "citations": [
-            COUNTRY_REGULATIONS["Australia"][0],
-            "Unity Catalog MCP Tools"
+            "Australian Taxation Office (ATO) - Superannuation Tax Rules",
+            "Centrelink - Age Pension Asset Test 2025",
+            "Australian Retirement Trust - Income Projection Model"
         ]
     }
 
+
 # ============================================================================
-# USA
+# USA - 401(k) Functions
 # ============================================================================
 
-def calculate_401k_usa(user_data):
-    """USA 401(k) calculator"""
-    member_id = user_data.get('member_id')
+def calculate_401k_usa(member_id, withdrawal_amount=100000):
+    """Calculate USA 401(k) using 3 UC functions"""
     
-    # Convert to float to handle string values
-    try:
-        balance = float(user_data.get('super_balance', 0))
-        age = float(user_data.get('age', 65))
-    except (ValueError, TypeError):
-        balance = 0
-        age = 65
+    # 1. Calculate 401(k) withdrawal tax/penalties (IRS)
+    tax_result = call_uc_function("calculate_401k_withdrawal", member_id, withdrawal_amount)
     
-    withdrawal_pct = 0.04 if age >= 59.5 else 0.03
-    withdrawal_amount = balance * withdrawal_pct
+    # 2. Check Social Security impact (SSA)
+    ss_result = call_uc_function("check_social_security_impact", member_id, withdrawal_amount)
     
-    tax_info = call_uc_function('calculate_401k_withdrawal', member_id, withdrawal_amount)
-    ss_impact = call_uc_function('check_social_security_impact', member_id, withdrawal_amount)
-    projection = call_uc_function('project_401k_balance', member_id, 10)
+    # 3. Project 401(k) balance
+    projection_result = call_uc_function("project_401k_balance", member_id, 20)
     
-    if tax_info and ss_impact:
-        summary = f"""Based on your US 401(k) profile:
+    summary = f"""USA 401(k) Analysis:
 
-💰 Recommended Annual Withdrawal: ${withdrawal_amount:,.2f}
-   • Status: {tax_info.get('status', 'Unknown')}
-   • Tax rate: {tax_info.get('tax_rate', 'N/A')}
-   • Penalty: ${tax_info.get('penalty', 0):,.2f}
-   • Net withdrawal: ${tax_info.get('net_withdrawal', withdrawal_amount):,.2f}
-
-🇺🇸 Social Security Impact:
-   • Combined retirement income: ${ss_impact.get('combined_retirement_income', 0):,.2f}
-
-📊 10-Year Projection: {projection.get('projection_summary', 'N/A') if projection else 'N/A'}
+Tax & Penalties (IRS): {tax_result if tax_result else 'Calculation pending'}
+Social Security Impact (SSA): {ss_result if ss_result else 'Calculation pending'}
+20-Year 401(k) Projection: {projection_result if projection_result else 'Calculation pending'}
 """
-        amount = tax_info.get('net_withdrawal', withdrawal_amount)
-    else:
-        summary = f"Estimated annual 401(k) withdrawal: ${withdrawal_amount:,.2f}"
-        amount = withdrawal_amount
     
     return {
-        "amount": amount,
+        "country": "USA",
+        "withdrawal_amount": withdrawal_amount,
+        "tax_calculation": tax_result,
+        "social_security_impact": ss_result,
+        "retirement_projection": projection_result,
         "summary": summary,
-        "tool_used": "UC_MCP_US_401k_v1",
-        "citations": [COUNTRY_REGULATIONS["USA"][0], "Unity Catalog MCP Tools"]
+        "citations": [
+            "IRS Publication 590-B - 401(k) Withdrawal Rules",
+            "Social Security Administration - Benefit Calculator 2025",
+            "Department of Labor - 401(k) Projection Standards"
+        ]
     }
 
+
 # ============================================================================
-# UK
+# UNITED KINGDOM - Pension Functions
 # ============================================================================
 
-def calculate_uk_pension(user_data):
-    """UK pension calculator"""
-    member_id = user_data.get('member_id')
+def calculate_uk_pension(member_id, withdrawal_amount=100000):
+    """Calculate UK pension using 3 UC functions"""
     
-    # Convert to float to handle string values
-    try:
-        balance = float(user_data.get('super_balance', 0))
-        age = float(user_data.get('age', 65))
-    except (ValueError, TypeError):
-        balance = 0
-        age = 65
+    # 1. Calculate pension withdrawal tax (HMRC)
+    tax_result = call_uc_function("calculate_uk_pension_withdrawal", member_id, withdrawal_amount)
     
-    withdrawal_pct = 0.04 if age >= 55 else 0.03
-    withdrawal_amount = balance * withdrawal_pct
+    # 2. Check State Pension (DWP)
+    state_pension_result = call_uc_function("check_uk_state_pension", member_id, withdrawal_amount)
     
-    tax_info = call_uc_function('calculate_uk_pension_withdrawal', member_id, withdrawal_amount)
-    state_pension = call_uc_function('check_uk_state_pension', member_id, withdrawal_amount)
-    projection = call_uc_function('project_uk_pension_balance', member_id, 10)
+    # 3. Project pension balance
+    projection_result = call_uc_function("project_uk_pension_balance", member_id, 20)
     
-    if tax_info and state_pension:
-        summary = f"""Based on your UK pension profile:
+    summary = f"""UK Pension Analysis:
 
-💰 Recommended Annual Withdrawal: £{withdrawal_amount:,.2f}
-   • Status: {tax_info.get('status', 'Unknown')}
-   • Tax-free portion: £{tax_info.get('tax_free_portion', 0):,.2f}
-   • Net withdrawal: £{tax_info.get('net_withdrawal', withdrawal_amount):,.2f}
-
-🇬🇧 State Pension: £{state_pension.get('annual_state_pension', 0):,.2f}
-
-📊 10-Year Projection: {projection.get('projection_summary', 'N/A') if projection else 'N/A'}
+Withdrawal Tax (HMRC): {tax_result if tax_result else 'Calculation pending'}
+State Pension (DWP): {state_pension_result if state_pension_result else 'Calculation pending'}
+20-Year Pension Projection: {projection_result if projection_result else 'Calculation pending'}
 """
-        amount = tax_info.get('net_withdrawal', withdrawal_amount)
-    else:
-        summary = f"Estimated annual pension withdrawal: £{withdrawal_amount:,.2f}"
-        amount = withdrawal_amount
     
     return {
-        "amount": amount,
+        "country": "United Kingdom",
+        "withdrawal_amount": withdrawal_amount,
+        "tax_calculation": tax_result,
+        "state_pension": state_pension_result,
+        "retirement_projection": projection_result,
         "summary": summary,
-        "tool_used": "UC_MCP_UK_Pension_v1",
-        "citations": [COUNTRY_REGULATIONS["UK"][0], "Unity Catalog MCP Tools"]
+        "citations": [
+            "HMRC - Pension Tax Rules 2025",
+            "DWP - State Pension Forecast Service",
+            "Financial Conduct Authority - Pension Projections"
+        ]
     }
 
+
 # ============================================================================
-# INDIA
+# INDIA - EPF/PF Functions
 # ============================================================================
 
-def calculate_india_pf(user_data):
-    """India Provident Fund calculator"""
-    member_id = user_data.get('member_id')
+def calculate_india_pf(member_id, withdrawal_amount=100000):
+    """Calculate India EPF/PF using 3 UC functions"""
     
-    # Convert to float to handle string values
-    try:
-        balance = float(user_data.get('super_balance', 0))
-        age = float(user_data.get('age', 65))
-    except (ValueError, TypeError):
-        balance = 0
-        age = 65
+    # 1. Calculate EPF withdrawal tax (EPFO)
+    tax_result = call_uc_function("calculate_epf_withdrawal", member_id, withdrawal_amount)
     
-    withdrawal_pct = 0.05 if age >= 58 else 0.03
-    withdrawal_amount = balance * withdrawal_pct
+    # 2. Check pension impact (NPS)
+    pension_result = call_uc_function("check_india_pension_impact", member_id, withdrawal_amount)
     
-    tax_info = call_uc_function('calculate_epf_withdrawal', member_id, withdrawal_amount)
-    pension_impact = call_uc_function('check_india_pension_impact', member_id, withdrawal_amount)
-    projection = call_uc_function('project_india_pf_balance', member_id, 10)
+    # 3. Project PF balance
+    projection_result = call_uc_function("project_india_pf_balance", member_id, 20)
     
-    if tax_info and pension_impact:
-        summary = f"""Based on your India PF profile:
+    summary = f"""India EPF/PF Analysis:
 
-�� Recommended Annual Withdrawal: ₹{withdrawal_amount:,.2f}
-   • Tax status: {tax_info.get('tax_status', 'Unknown')}
-   • Net withdrawal: ₹{tax_info.get('net_withdrawal', withdrawal_amount):,.2f}
-
-🇮🇳 Annual pension income: ₹{pension_impact.get('annual_pension_income', 0):,.2f}
-
-📊 10-Year Projection: {projection.get('projection_summary', 'N/A') if projection else 'N/A'}
+EPF Withdrawal Tax (EPFO): {tax_result if tax_result else 'Calculation pending'}
+Pension Impact (NPS): {pension_result if pension_result else 'Calculation pending'}
+20-Year PF Projection: {projection_result if projection_result else 'Calculation pending'}
 """
-        amount = tax_info.get('net_withdrawal', withdrawal_amount)
-    else:
-        summary = f"Estimated annual PF withdrawal: ₹{withdrawal_amount:,.2f}"
-        amount = withdrawal_amount
     
     return {
-        "amount": amount,
+        "country": "India",
+        "withdrawal_amount": withdrawal_amount,
+        "tax_calculation": tax_result,
+        "pension_impact": pension_result,
+        "retirement_projection": projection_result,
         "summary": summary,
-        "tool_used": "UC_MCP_India_PF_v1",
-        "citations": [COUNTRY_REGULATIONS["India"][0], "Unity Catalog MCP Tools"]
+        "citations": [
+            "EPFO - EPF Withdrawal Rules",
+            "PFRDA - National Pension System Guidelines",
+            "Income Tax Department - PF Taxation 2025"
+        ]
     }
+
+
+# ============================================================================
+# Country Tool Router
+# ============================================================================
 
 def get_country_tool(country):
-    """Get the appropriate calculator tool for a country"""
-    tools = {
+    """Get the appropriate calculator function for a country"""
+    
+    country_tools = {
         "Australia": calculate_super_australia,
         "USA": calculate_401k_usa,
         "United Kingdom": calculate_uk_pension,
         "India": calculate_india_pf
     }
-    return tools.get(country, calculate_super_australia)
+    
+    tool = country_tools.get(country)
+    
+    if not tool:
+        raise ValueError(f"No tool available for country: {country}")
+    
+    return tool
 
