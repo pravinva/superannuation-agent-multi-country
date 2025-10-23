@@ -210,7 +210,7 @@ Respond with JSON only (no markdown, no code blocks):"""
             json_str = judge_output.strip()
             
             # Handle markdown code blocks - FIXED LINE 236
-            code_block_start = "```
+            code_block_start = "```"
             code_block_end = "```"
             
             if code_block_start in json_str:
@@ -392,4 +392,3 @@ class DeterministicValidator:
 
 # Explicit exports
 __all__ = ['LLMJudgeValidator', 'DeterministicValidator']
-
