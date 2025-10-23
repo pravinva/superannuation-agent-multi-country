@@ -119,7 +119,9 @@ class LLMJudgeValidator:
             else:
                 # CRITICAL FIX: No JSON found, default to FAIL
                 print("❌ No JSON structure found in judge output")
-                print(f"⚠️ Found potential issues in unparseable output: {[line for line in judge_output.split('\n')[:5] if 'violation' in line.lower() or 'critical' in line.lower()]}")
+                lines = judge_output.split('\n')[:5]
+                potential_issues = [line for line in lines if 'violation' in line.lower() or 'critical' in line.lower()]
+                print(f"⚠️ Found potential issues in unparseable output: {potential_issues}")
 
                 return {
                     "passed": False,  # ← FIXED: Was True, now False
