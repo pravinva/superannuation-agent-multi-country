@@ -1,4 +1,4 @@
-# app.py - Complete with Fixed Member Selection & Country Colors
+# app.py - COMPLETE WORKING VERSION with Member Card Colors & Selection Fix
 """
 Multi-Country Retirement Advisory Application
 Main Streamlit application with two-page navigation
@@ -17,7 +17,7 @@ from ui_components import (
 from progress_utils import render_progress
 from audit.audit_utils import get_audit_log
 from mlflow_utils import show_mlflow_runs
-from agent_processor import agent_query  # Using agent_processor wrapper
+from agent_processor import agent_query
 from data_utils import get_members_by_country
 from country_content import COUNTRY_PROMPTS, COUNTRY_DISCLAIMERS, POST_ANSWER_DISCLAIMERS
 
@@ -136,11 +136,11 @@ if page == "Advisory":
     st.markdown("---")
 
     # ========================================================================
-    # MEMBER SELECTION (FIXED - NO REFRESH, COUNTRY COLORS)
+    # MEMBER SELECTION - FIXED VERSION (No Reload, Country Colors)
     # ========================================================================
     st.subheader("📋 Select Member Profile")
 
-    # Load members ONCE per country to prevent refresh
+    # Load members ONCE per country (prevents reload/shuffle)
     if st.session_state.current_country_code != country_code:
         members_df = get_members_by_country(country_code)
         st.session_state.members_list = members_df.to_dict('records') if not members_df.empty else []
@@ -153,37 +153,38 @@ if page == "Advisory":
         st.warning(f"⚠️ No members found for {country_display}. Please add members to the database.")
         st.info("Run the SQL scripts in the `sql/` folder to add sample members.")
     else:
-        # Display members in a grid WITHOUT causing refresh
+        # Display members in grid (no reload on click)
         cols = st.columns(min(3, len(members)))
 
         for idx, member in enumerate(members):
             with cols[idx % 3]:
                 member_id = member.get('member_id')
-                is_selected = st.session_state.selected_member == member_id
+                is_selected = (st.session_state.selected_member == member_id)
 
-                # Use button with custom styling (no full page reload)
+                # Button for selection
+                button_type = "primary" if is_selected else "secondary"
                 button_label = f"{'✓ ' if is_selected else ''}Select {member.get('name', 'Unknown')}"
 
                 if st.button(
                     button_label,
-                    key=f"select_btn_{member_id}",
+                    key=f"btn_{member_id}_{country_code}",  # Include country in key
                     use_container_width=True,
-                    type="primary" if is_selected else "secondary"
+                    type=button_type
                 ):
                     st.session_state.selected_member = member_id
-                    st.rerun()  # Light rerun to update UI only
+                    st.rerun()  # Lightweight rerun to update UI
 
-                # Render card with country colors and selection highlight
+                # Render card with colors - CRITICAL: passes is_selected boolean
                 render_member_card(member, is_selected, country_display)
 
-        # Get currently selected member
+        # Get selected member
         if st.session_state.selected_member:
             member = next(
                 (m for m in members if m.get('member_id') == st.session_state.selected_member),
                 members[0]
             )
         else:
-            # Auto-select first member if none selected
+            # Auto-select first member
             member = members[0]
             st.session_state.selected_member = member.get('member_id')
 
