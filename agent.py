@@ -1,4 +1,4 @@
-# agent.py - Multi-Country Retirement Advisor Agent with Hybrid Validation & Retry
+# agent.py - Multi-Country Retirement Advisor with Hyper-Personalization
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.service.serving import ChatMessage, ChatMessageRole
 from tools import get_country_tool
@@ -13,7 +13,7 @@ from datetime import datetime
 
 
 class MultiCountryAdvisorAgent:
-    """Multi-country retirement advisor using Claude Opus 4.1 with self-correction"""
+    """Multi-country retirement advisor with hyper-personalization"""
 
     def __init__(self, country="Australia"):
         self.w = WorkspaceClient()
@@ -22,7 +22,6 @@ class MultiCountryAdvisorAgent:
         self.judge_endpoint = JUDGE_LLM_ENDPOINT
         self.session_id = str(uuid.uuid4())
 
-        # Initialize LLM Judge validator
         self.validator = LLMJudgeValidator(judge_endpoint=self.judge_endpoint)
 
         print(f"✓ Multi-Country Advisor Agent initialized")
@@ -128,7 +127,11 @@ class MultiCountryAdvisorAgent:
             if field in profile:
                 profile[field] = self._convert_to_int(profile[field])
 
-        # Anonymization
+        # Extract first name for personalization
+        member_full_name = profile['name']
+        member_first_name = member_full_name.split()[0] if member_full_name else 'Member'
+
+        # Anonymization (kept for backwards compatibility, but disabled by default for personalization)
         real_name = profile['name']
         if anonymize:
             member_token = f"Member {member_id[-4:]}"
@@ -136,6 +139,7 @@ class MultiCountryAdvisorAgent:
             print(f"🔒 Anonymized: '{real_name}' → '{member_token}'")
         else:
             member_token = None
+            print(f"✅ Using real name for hyper-personalization: '{real_name}'")
 
         # STEP 1: Call country-specific calculator
         if status_callback:
@@ -162,6 +166,7 @@ class MultiCountryAdvisorAgent:
 
         context = f"""MEMBER PROFILE:
 Name: {profile['name']}
+First Name: {member_first_name}
 Age: {profile.get('age')}
 Balance: ${profile.get('super_balance', 0):,}
 Employment: {profile.get('employment_status')}
@@ -200,22 +205,28 @@ USER QUESTION:
                 print(f"RETRY REASON: Judge found violations")
             print(f"{'='*70}\n")
 
-            # Stage 1: Situation
+            # Stage 1: Situation (HYPER-PERSONALIZED)
             if status_callback:
                 status_callback("synthesis_stage", {"stage": 1, "task": f"Situation ({attempt_label})"})
 
-            situation_prompt = f"""""CONTEXT:
+            situation_prompt = f"""CONTEXT:
 {context}
 
-Write EXACTLY 2 sentences about {profile['name']}'s retirement situation in {self.country}.
+Write EXACTLY 2 sentences addressing {member_first_name} DIRECTLY by their first name.
 
-RULES:
+CRITICAL PERSONALIZATION RULES:
+- Start with: "{member_first_name}, you are {profile.get('age')} years old..."
+- Use DIRECT address throughout (you/your not they/their)
+- Reference their ACTUAL balance: ${profile.get('super_balance', 0):,}
+- Make it conversational and personal
+- Example: "John, you are 56 years old with a superannuation balance of $450,000. You are currently employed full-time and approaching your preservation age of 60."
+
+FORMATTING RULES:
 - EXACTLY 2 sentences, max 40 words each
-- Use their actual data (age, balance)
 - NO asterisks or special characters
-- ALWAYS use spaces around currency: "$100,000 tax-free" NOT "$100,000tax-free"
-- ALWAYS use commas in large numbers: "100,000" NOT "100000"
-- ALWAYS add spaces around math symbols: "$ 32,500 - $ 37,000" NOT "$32,500-$37,000"
+- ALWAYS use spaces: "$100,000 tax-free" NOT "$100,000tax-free"
+- ALWAYS use commas: "100,000" NOT "100000"
+- ALWAYS spaces around math: "$ 32,500 - $ 37,000" NOT "$32,500-$37,000"
 
 {validation_feedback if validation_feedback else ''}
 
@@ -235,12 +246,13 @@ Write directly (no headers)."""
             insights_prompt = f"""CONTEXT:
 {context}
 
-Write EXACTLY 3 key insights for {self.country} retirement planning.
+Write EXACTLY 3 key insights for {member_first_name}'s {self.country} retirement planning.
 
 RULES:
 - EXACTLY 3 bullet points
 - Max 30 words per bullet
 - Use actual numbers from tool results
+- Use "you/your" language (continue personalization)
 - ALWAYS use spaces: "$100,000 tax-free" NOT "$100,000tax-free"
 - ALWAYS use commas: "100,000" NOT "100000"
 
@@ -266,11 +278,12 @@ PREVIOUS:
 {situation}
 {insights}
 
-Write EXACTLY 2 actionable recommendations.
+Write EXACTLY 2 actionable recommendations for {member_first_name}.
 
 RULES:
 - EXACTLY 2 numbered items
 - ONE sentence each, max 35 words
+- Continue using "you/your" personalization
 - ALWAYS use spaces: "$100,000 tax-free" NOT "$100,000tax-free"
 - ALWAYS use commas: "100,000" NOT "100000"
 
@@ -307,7 +320,6 @@ Write directly (no headers)."""
                                      if v.get('severity') == 'CRITICAL']
 
                 if critical_violations:
-                    # Fast fail - found critical issues
                     print(f"❌ Deterministic check failed: {len(critical_violations)} critical issues")
                     validation_result = det_result
                     validation_result['fast_fail'] = True
@@ -329,21 +341,18 @@ Write directly (no headers)."""
                         validation_result = det_result
                         validation_passed = det_result.get('passed', True)
 
-                # Store validation result
                 tool_result[f'_validation_attempt_{attempt}'] = validation_result
 
                 print(f"⚖️  Validation: {validation_result.get('passed')} (confidence: {validation_result.get('confidence', 0):.2f})")
 
-                # If validation failed and we have retries left
                 if not validation_passed and attempt < MAX_RETRIES:
                     print(f"\n⚠️  Validation failed. Preparing retry {attempt + 2}/{MAX_RETRIES + 1}...")
 
-                    # Build feedback for retry
                     violations = validation_result.get('violations', [])
                     reasoning = validation_result.get('reasoning', '')
 
                     validation_feedback = f"""
-⚠️ CRITICAL: Your previous response had compliance issues. Fix these before proceeding:
+⚠️ CRITICAL: Your previous response had compliance issues. Fix these:
 
 """
                     for i, violation in enumerate(violations, 1):
@@ -357,22 +366,19 @@ Judge's reasoning: {reasoning}
 CRITICAL INSTRUCTIONS FOR THIS RETRY:
 1. Fix ALL violations listed above
 2. Use ONLY data from member profile and tool results
-3. Ensure mathematical accuracy (double-check age comparisons)
+3. Maintain hyper-personalization: Address {member_first_name} directly
 4. Always use proper spacing: "$100,000 tax-free" NOT "$100,000tax-free"
 5. Be precise about eligibility thresholds
 """
 
-                    # Increment attempt counter
                     attempt += 1
 
                     if status_callback:
                         status_callback("retry", {"attempt": attempt + 1, "violations": len(violations)})
 
                 else:
-                    # Either passed or out of retries
                     break
             else:
-                # Validation disabled - accept on first attempt
                 validation_passed = True
                 validation_result = {'passed': True, 'confidence': 1.0, 'violations': []}
                 break
@@ -382,7 +388,6 @@ CRITICAL INSTRUCTIONS FOR THIS RETRY:
         timings['synthesis_total'] = total_synthesis_time
         timings['synthesis_attempts'] = attempt + 1
 
-        # Store final validation result
         tool_result['_validation'] = validation_result
         tool_result['_validation_attempts'] = attempt + 1
         tool_result['_validation_passed'] = validation_passed
@@ -418,19 +423,17 @@ CRITICAL INSTRUCTIONS FOR THIS RETRY:
 
 *Response for {self.country} | Session: {self.session_id[:8]} | Validated: {attempt + 1} attempt(s)*"""
 
-        # De-anonymize
+        # De-anonymize (only if anonymization was enabled)
         if anonymize and member_token:
             response = response.replace(member_token, real_name)
             print(f"🔓 Restored: '{member_token}' → '{real_name}'")
 
-        # Add metadata
         tool_result['_timings'] = timings
         tool_result['_tools_called'] = tools_called
 
         total_elapsed = time.time() - overall_start
         timings['total'] = total_elapsed
 
-        # Log audit
         self._log_query_audit(member_id, user_query, response, total_elapsed, len(tools_called))
 
         print(f"\n✅ Completed in {total_elapsed:.2f}s")

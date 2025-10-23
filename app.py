@@ -1,4 +1,4 @@
-# app.py
+# app.py - Complete with Fixed Member Selection & Country Colors
 """
 Multi-Country Retirement Advisory Application
 Main Streamlit application with two-page navigation
@@ -17,7 +17,7 @@ from ui_components import (
 from progress_utils import render_progress
 from audit.audit_utils import get_audit_log
 from mlflow_utils import show_mlflow_runs
-from agent_processor import agent_query  # FIXED: Changed from agent import
+from agent_processor import agent_query  # Using agent_processor wrapper
 from data_utils import get_members_by_country
 from country_content import COUNTRY_PROMPTS, COUNTRY_DISCLAIMERS, POST_ANSWER_DISCLAIMERS
 
@@ -58,9 +58,12 @@ if "agent_output" not in st.session_state:
     st.session_state.agent_output = None
 if "selected_member" not in st.session_state:
     st.session_state.selected_member = None
+if "members_list" not in st.session_state:
+    st.session_state.members_list = []
+if "current_country_code" not in st.session_state:
+    st.session_state.current_country_code = None
 
 # Sidebar navigation
-# Add logo to sidebar FIRST
 if os.path.exists("logo.png"):
     st.sidebar.image("logo.png", use_column_width=True)
 
@@ -132,32 +135,45 @@ if page == "Advisory":
 
     st.markdown("---")
 
-    # Member selection
+    # ========================================================================
+    # MEMBER SELECTION (FIXED - NO REFRESH, COUNTRY COLORS)
+    # ========================================================================
     st.subheader("📋 Select Member Profile")
 
-    # Retrieve members from Unity Catalog using country CODE
-    members_df = get_members_by_country(country_code)
+    # Load members ONCE per country to prevent refresh
+    if st.session_state.current_country_code != country_code:
+        members_df = get_members_by_country(country_code)
+        st.session_state.members_list = members_df.to_dict('records') if not members_df.empty else []
+        st.session_state.current_country_code = country_code
+        st.session_state.selected_member = None  # Reset selection on country change
 
-    if members_df.empty:
+    members = st.session_state.members_list
+
+    if not members:
         st.warning(f"⚠️ No members found for {country_display}. Please add members to the database.")
         st.info("Run the SQL scripts in the `sql/` folder to add sample members.")
     else:
-        members = members_df.to_dict('records')
-
-        # Display members in a grid
-        cols = st.columns(3)
+        # Display members in a grid WITHOUT causing refresh
+        cols = st.columns(min(3, len(members)))
 
         for idx, member in enumerate(members):
             with cols[idx % 3]:
-                is_selected = st.session_state.selected_member == member.get('member_id')
+                member_id = member.get('member_id')
+                is_selected = st.session_state.selected_member == member_id
+
+                # Use button with custom styling (no full page reload)
+                button_label = f"{'✓ ' if is_selected else ''}Select {member.get('name', 'Unknown')}"
+
                 if st.button(
-                    f"Select {member.get('name', 'Unknown')}",
-                    key=f"member_{idx}",
+                    button_label,
+                    key=f"select_btn_{member_id}",
                     use_container_width=True,
                     type="primary" if is_selected else "secondary"
                 ):
-                    st.session_state.selected_member = member.get('member_id')
+                    st.session_state.selected_member = member_id
+                    st.rerun()  # Light rerun to update UI only
 
+                # Render card with country colors and selection highlight
                 render_member_card(member, is_selected, country_display)
 
         # Get currently selected member
@@ -167,6 +183,7 @@ if page == "Advisory":
                 members[0]
             )
         else:
+            # Auto-select first member if none selected
             member = members[0]
             st.session_state.selected_member = member.get('member_id')
 
@@ -225,12 +242,12 @@ if page == "Advisory":
                         progress_placeholder.info("⏳ Processing your request. Estimated completion: 5-10 seconds.")
 
                     try:
-                        # FIXED: Call agent_query instead of run_agent_interaction
+                        # Call agent_query with real-time progress
                         answer, citations, response_dict, judge_resp, judge_verdict, error_info, tools_called = agent_query(
                             user_id=st.session_state.user_id,
                             country=country_display,
                             query_str=question,
-                            extra_context=member,
+                            extra_context=member,  # Pass full member profile including name
                             session_id=st.session_state.session_id,
                             judge_llm_fn=None,
                             mlflow_experiment_path=None

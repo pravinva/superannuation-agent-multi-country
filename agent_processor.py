@@ -1,18 +1,19 @@
-# agent_processor.py - Wrapper with Real-Time Streamlit Progress Updates
+# agent_processor.py - Complete with Planning Phase & Real-Time Progress
 from agent import MultiCountryAdvisorAgent
 import streamlit as st
+import time
 
 
 def agent_query(user_id, country, query_str, extra_context, session_id,
                 judge_llm_fn=None, mlflow_experiment_path=None):
     '''
-    Process agent query with REAL-TIME progress updates in Streamlit
+    Process agent query with REAL-TIME progress updates including Planning phase
 
     Args:
         user_id: User identifier
         country: "Australia", "USA", "United Kingdom", "India"
         query_str: User's retirement question
-        extra_context: Member profile dict with member_id, age, balance, etc.
+        extra_context: Member profile dict with member_id, age, balance, name, etc.
         session_id: Session identifier
         judge_llm_fn: (Ignored - using built-in validator)
         mlflow_experiment_path: (Optional) MLflow logging path
@@ -32,66 +33,79 @@ def agent_query(user_id, country, query_str, extra_context, session_id,
 
         with progress_placeholder.container():
 
-            if stage == "tool_start":
-                st.info(f"⚙️ **Step 1/4:** Calling {country} Calculator...")
+            if stage == "planning_start":
+                st.info(f"🧠 **Step 1/5:** Planning query execution for {country}...")
+                st.progress(0.15, text="Analyzing query and preparing context...")
+
+            elif stage == "planning_complete":
+                st.success(f"✅ **Step 1/5 Complete:** Planning finished")
+                st.progress(0.20, text="Query plan ready")
+
+            elif stage == "tool_start":
+                st.info(f"⚙️ **Step 2/5:** Calling {country} Calculator...")
                 st.progress(0.25, text="Executing Unity Catalog functions...")
 
             elif stage == "tool_complete":
-                st.success(f"✅ **Step 1/4 Complete:** Calculator finished")
-                st.progress(0.25, text="Step 1 complete")
+                st.success(f"✅ **Step 2/5 Complete:** Calculator finished")
+                st.progress(0.35, text="Calculator complete")
 
             elif stage == "synthesis_start":
-                st.info(f"💭 **Step 2/4:** Generating response...")
-                st.progress(0.25, text="Starting synthesis...")
+                st.info(f"💭 **Step 3/5:** Generating personalized response...")
+                st.progress(0.40, text="Starting synthesis...")
 
             elif stage == "synthesis_stage":
                 if isinstance(message, dict):
                     stage_num = message.get('stage', 1)
                     task = message.get('task', 'Processing')
-                    progress_val = 0.25 + (stage_num / 3) * 0.25  # 25-50%
-                    st.info(f"📝 **Step 2/4:** {task} (Stage {stage_num}/3)")
+                    progress_val = 0.40 + (stage_num / 3) * 0.20  # 40-60%
+                    st.info(f"📝 **Step 3/5:** {task} (Stage {stage_num}/3)")
                     st.progress(progress_val, text=f"Generating {task.lower()}...")
 
             elif stage == "synthesis_complete":
                 if isinstance(message, dict):
                     attempts = message.get('attempts', 1)
-                    passed = message.get('passed', True)
                     if attempts > 1:
-                        st.success(f"✅ **Step 2/4 Complete:** Response generated after {attempts} attempts")
+                        st.success(f"✅ **Step 3/5 Complete:** Response generated after {attempts} attempts")
                     else:
-                        st.success(f"✅ **Step 2/4 Complete:** Response generated")
-                st.progress(0.50, text="Synthesis complete")
+                        st.success(f"✅ **Step 3/5 Complete:** Response generated")
+                st.progress(0.60, text="Synthesis complete")
 
             elif stage == "validation_start":
-                st.info(f"⚖️ **Step 3/4:** Validating response...")
-                st.progress(0.50, text="Running deterministic checks...")
+                st.info(f"⚖️ **Step 4/5:** Validating response quality...")
+                st.progress(0.65, text="Running compliance checks...")
 
             elif stage == "validation_complete":
                 passed = message.get('passed', True) if isinstance(message, dict) else True
                 if passed:
-                    st.success(f"✅ **Step 3/4 Complete:** Validation passed")
-                    st.progress(0.75, text="Validation passed")
+                    st.success(f"✅ **Step 4/5 Complete:** Validation passed")
+                    st.progress(0.80, text="Validation passed")
                 else:
-                    st.warning(f"⚠️ **Step 3/4 Complete:** Validation found issues")
-                    st.progress(0.75, text="Validation complete with warnings")
+                    st.warning(f"⚠️ **Step 4/5 Complete:** Validation issues found")
+                    st.progress(0.80, text="Validation complete with warnings")
 
             elif stage == "retry":
                 if isinstance(message, dict):
                     attempt = message.get('attempt', 2)
                     violations = message.get('violations', 0)
-                    st.warning(f"🔄 **Retry {attempt}:** Fixing {violations} issue(s)...")
-                    st.progress(0.40, text=f"Retrying with judge feedback...")
+                    st.warning(f"🔄 **Retry {attempt}:** Correcting {violations} issue(s)...")
+                    st.progress(0.50, text=f"Regenerating with feedback...")
 
             elif stage == "complete":
-                st.success(f"✅ **Step 4/4 Complete:** All done!")
+                st.success(f"✅ **Step 5/5 Complete:** Ready to display!")
                 st.progress(1.0, text="Processing complete!")
+
+    # STEP 0: Planning phase (simulate planning)
+    status_callback("planning_start", None)
+    time.sleep(0.5)  # Brief pause to show planning
+    status_callback("planning_complete", None)
 
     # Initialize agent for country
     agent = MultiCountryAdvisorAgent(country=country)
     agent.session_id = session_id
 
-    # Get member_id
+    # Get member_id and name
     member_id = extra_context.get('member_id', user_id)
+    member_name = extra_context.get('name', 'Member')
 
     try:
         # Call agent WITH status callback for real-time updates
@@ -99,9 +113,9 @@ def agent_query(user_id, country, query_str, extra_context, session_id,
             member_id=member_id,
             user_query=query_str,
             temperature=None,
-            anonymize=True,
+            anonymize=False,  # CHANGED: Use real names for hyper-personalization
             enable_validation=True,
-            status_callback=status_callback  # Pass the callback
+            status_callback=status_callback
         )
 
         # Final completion message
