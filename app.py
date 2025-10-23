@@ -12,12 +12,12 @@ from config import BRANDCONFIG, MLFLOW_PROD_EXPERIMENT_PATH, ARCHITECTURECONTENT
 from ui_components import (
     render_logo, render_member_card, render_question_card,
     render_country_welcome, render_postanswer_disclaimer,
-    render_audit_table, render_structured_response
+    render_audit_table
 )
 from progress_utils import render_progress
 from audit.audit_utils import get_audit_log
 from mlflow_utils import show_mlflow_runs
-from agent import run_agent_interaction
+from agent_processor import agent_query  # FIXED: Changed from agent import
 from data_utils import get_members_by_country
 from country_content import COUNTRY_PROMPTS, COUNTRY_DISCLAIMERS, POST_ANSWER_DISCLAIMERS
 
@@ -60,6 +60,7 @@ if "selected_member" not in st.session_state:
     st.session_state.selected_member = None
 
 # Sidebar navigation
+# Add logo to sidebar FIRST
 if os.path.exists("logo.png"):
     st.sidebar.image("logo.png", use_column_width=True)
 
@@ -91,6 +92,7 @@ st.session_state.page = page
 # ============================================================================
 # PAGE 1: ADVISORY INTERFACE
 # ============================================================================
+
 if page == "Advisory":
     render_logo()
     
@@ -144,6 +146,7 @@ if page == "Advisory":
         
         # Display members in a grid
         cols = st.columns(3)
+        
         for idx, member in enumerate(members):
             with cols[idx % 3]:
                 is_selected = st.session_state.selected_member == member.get('member_id')
@@ -154,7 +157,6 @@ if page == "Advisory":
                     type="primary" if is_selected else "secondary"
                 ):
                     st.session_state.selected_member = member.get('member_id')
-                    st.rerun()  # Rerun to update card display
                 
                 render_member_card(member, is_selected, country_display)
         
@@ -186,7 +188,7 @@ if page == "Advisory":
                 "🎓 Can I withdraw from my 401(k) early for education or home purchase?"
             ],
             "United Kingdom": [
-                "�� How much of my pension can I take as a tax-free lump sum?",
+                "💷 How much of my pension can I take as a tax-free lump sum?",
                 "✈️ Can I transfer my UK pension to another country if I move abroad?",
                 "⏰ What are my options for accessing my pension before state pension age?"
             ],
@@ -199,6 +201,7 @@ if page == "Advisory":
         
         st.caption("💡 Try these sample questions:")
         cols = st.columns(3)
+        
         for idx, q in enumerate(sample_questions.get(country_display, [])[:3]):
             with cols[idx]:
                 if st.button(q, key=f"sample_q_{idx}", use_container_width=True):
@@ -216,41 +219,62 @@ if page == "Advisory":
                 st.warning("Please enter a question first.")
             else:
                 with st.spinner("🔄 Processing your request..."):
+                    # Show progress message if logs are hidden
+                    if not st.session_state.show_logs:
+                        progress_placeholder = st.empty()
+                        progress_placeholder.info("⏳ Processing your request. Estimated completion: 5-10 seconds.")
+                    
                     try:
-                        # Run agent interaction
-                        agent_output = run_agent_interaction(
+                        # FIXED: Call agent_query instead of run_agent_interaction
+                        answer, citations, response_dict, judge_resp, judge_verdict, error_info, tools_called = agent_query(
                             user_id=st.session_state.user_id,
                             country=country_display,
                             query_str=question,
                             extra_context=member,
-                            session_id=st.session_state.session_id
+                            session_id=st.session_state.session_id,
+                            judge_llm_fn=None,
+                            mlflow_experiment_path=None
                         )
+                        
+                        # Build agent_output dict for compatibility
+                        agent_output = {
+                            "answer": answer,
+                            "citations": citations,
+                            "response_dict": response_dict,
+                            "judge_response": judge_resp,
+                            "judge_verdict": judge_verdict,
+                            "error_info": error_info,
+                            "tools_called": tools_called,
+                            "tool_used": f"{country_display} Calculator"
+                        }
+                        
                         st.session_state.agent_output = agent_output
                         
-                        # Show progress AFTER agent completes (if logs enabled)
-                        if st.session_state.show_logs:
-                            tools_called = agent_output.get('tools_called', [])
-                            render_progress(
-                                member_data=member, 
-                                tools_called=tools_called, 
-                                show_logs=True
-                            )
-                    
+                        # Clear progress message
+                        if not st.session_state.show_logs:
+                            progress_placeholder.empty()
+                            
                     except Exception as e:
                         st.error(f"An error occurred: {str(e)}")
+                        import traceback
+                        st.code(traceback.format_exc())
                         st.session_state.agent_output = None
+                        if not st.session_state.show_logs:
+                            progress_placeholder.empty()
+        
+        # Show logs IF enabled
+        if st.session_state.show_logs:
+            member_data = member if st.session_state.agent_output else None
+            tools_called = st.session_state.agent_output.get("tools_called", []) if st.session_state.agent_output else []
+            render_progress(member_data, tools_called, True)
         
         # Display results
         if st.session_state.agent_output:
             st.markdown("---")
-            st.subheader("📊 Your Personalized Recommendation")
+            st.subheader("📊 Recommendation")
             
-            # Check if we have structured response
-            if 'response_dict' in st.session_state.agent_output:
-                render_structured_response(st.session_state.agent_output['response_dict'])
-            else:
-                # Fallback to plain answer
-                st.success(st.session_state.agent_output["answer"])
+            # Main answer
+            st.success(st.session_state.agent_output["answer"])
             
             # Post-answer disclaimer
             render_postanswer_disclaimer(country_display)
@@ -281,17 +305,21 @@ if page == "Advisory":
 # ============================================================================
 # PAGE 2: AUDIT/GOVERNANCE & DEVELOPER
 # ============================================================================
+
 elif page == "Audit/Governance":
     st.title("🔒 Governance & Developer Tools")
     
     tab1, tab2 = st.tabs(["🔒 Governance", "🛠️ Developer"])
     
-    # Governance Tab
+    # ========================================================================
+    # GOVERNANCE TAB
+    # ========================================================================
     with tab1:
         st.header("Audit Trail & Compliance")
         st.markdown(f"""
-        All user interactions are logged to Unity Catalog for compliance and governance.
-        **Table:** `{ARCHITECTURECONTENT.get('infra_details', 'Unity Catalog governance table')}`
+All user interactions are logged to Unity Catalog for compliance and governance.
+
+**Table:** `{ARCHITECTURECONTENT.get('infra_details', 'Unity Catalog governance table')}`
         """)
         
         # Filter options
@@ -303,7 +331,9 @@ elif page == "Audit/Governance":
                 ["All"] + COUNTRIES,
                 key="audit_country_filter"
             )
-            filter_country = None if filter_country_display == "All" else COUNTRY_DISPLAY_TO_CODE.get(filter_country_display)
+        
+        # Convert display name to code if not "All"
+        filter_country = None if filter_country_display == "All" else COUNTRY_DISPLAY_TO_CODE.get(filter_country_display)
         
         with col2:
             filter_user = st.text_input(
@@ -319,6 +349,7 @@ elif page == "Audit/Governance":
                 key="audit_session_filter"
             )
         
+        # Apply filters
         user_filter = filter_user if filter_user else None
         session_filter = filter_session if filter_session else None
         
@@ -330,12 +361,13 @@ elif page == "Audit/Governance":
                 country=filter_country
             )
         
+        # Display audit table
         render_audit_table(audit_df)
         
         # Summary metrics
         if not audit_df.empty:
             st.markdown("---")
-            st.subheader("📈 Summary Metrics")
+            st.subheader("�� Summary Metrics")
             
             col1, col2, col3, col4 = st.columns(4)
             
@@ -361,11 +393,16 @@ elif page == "Audit/Governance":
                 else:
                     st.metric("Errors", 0)
     
-    # Developer Tab
+    # ========================================================================
+    # DEVELOPER TAB
+    # ========================================================================
     with tab2:
         st.header("MLflow Experiment Tracking & Evaluation")
-        st.markdown("View MLflow experiment runs and trigger evaluations.")
+        st.markdown("""
+View MLflow experiment runs and trigger evaluations.
+        """)
         
+        # MLflow experiment selector
         exp_type = st.radio(
             "Select Experiment Type",
             ["Production", "Offline Evaluation"],
@@ -374,14 +411,18 @@ elif page == "Audit/Governance":
         )
         
         exp_path = MLFLOW_PROD_EXPERIMENT_PATH if exp_type == "Production" else st.session_state.get("mlflow_offline_path", "/Shared/experiments/offline/retirement-eval")
+        
         st.info(f"📊 Viewing: `{exp_path}`")
         
+        # Display MLflow runs
         with st.spinner("Loading MLflow runs..."):
             show_mlflow_runs(exp_path=exp_path)
         
         st.markdown("---")
         
-        st.subheader("�� Run Evaluation")
+        # Evaluation tools
+        st.subheader("🧪 Run Evaluation")
+        
         eval_mode = st.radio(
             "Evaluation Mode",
             ["Online (Single Query)", "Offline (Batch CSV)"],
@@ -398,20 +439,22 @@ elif page == "Audit/Governance":
                     st.info("Online evaluation triggered. Check MLflow for results.")
                 else:
                     st.warning("Please enter a query.")
-        
-        else:
+        else:  # Offline mode
             st.markdown("""
-            Run batch evaluation from a CSV file.
-            
-            **CSV Format:**
-            ```
-            user_id,country,query_str,age,super_balance
-            user001,AU,"How much can I withdraw?",65,450000
-            ```
+Run batch evaluation from a CSV file:
+
+**CSV Format:**
+user_id,country,query_str,age,super_balance
+user001,AU,"How much can I withdraw?",65,450000
+
+
+**Command:**
+python run_evaluation.py --mode offline --csv_path /path/to/eval_data.csv
+
+text
             """)
             st.info("Upload CSV and run evaluation from Databricks notebook or terminal.")
 
 # Footer
 st.markdown("---")
-st.caption(f"🏦 {BRANDCONFIG['brand_name']} | Session: {st.session_state.session_id[:8]}... | Support: {BRANDCONFIG.get('support_email', 'support@example.com')}")
-
+st.caption(f"🏦 {BRANDCONFIG['brand_name']} | Session: {st.session_state.session_id[:8]}... | Support: {BRANDCONFIG.get('support_email', 'support@example.com')}"
