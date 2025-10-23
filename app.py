@@ -95,10 +95,10 @@ st.session_state.page = page
 
 if page == "Advisory":
     render_logo()
-    
+
     # Country selector with flags as horizontal radio buttons
     st.subheader("🌍 Select Country")
-    
+
     # Country options with flag emojis
     country_options = {
         "🇦🇺 Australia": "Australia",
@@ -106,7 +106,7 @@ if page == "Advisory":
         "🇬🇧 United Kingdom": "United Kingdom",
         "🇮🇳 India": "India"
     }
-    
+
     # Radio buttons horizontal
     selected_country_with_flag = st.radio(
         "Choose your country:",
@@ -115,38 +115,38 @@ if page == "Advisory":
         key="country_selector",
         label_visibility="collapsed"
     )
-    
+
     # Get the country display name without flag
     country_display = country_options[selected_country_with_flag]
     st.session_state.country_display = country_display
-    
+
     # Convert display name to code for database query
     country_code = COUNTRY_DISPLAY_TO_CODE[country_display]
-    
+
     st.markdown("---")
-    
+
     # Consolidated country welcome section
     prompt_text = COUNTRY_PROMPTS.get(country_display, COUNTRY_PROMPTS["Australia"])
     disclaimer = COUNTRY_DISCLAIMERS.get(country_display, COUNTRY_DISCLAIMERS["Australia"])
     render_country_welcome(country_display, prompt_text, disclaimer)
-    
+
     st.markdown("---")
-    
+
     # Member selection
     st.subheader("📋 Select Member Profile")
-    
+
     # Retrieve members from Unity Catalog using country CODE
     members_df = get_members_by_country(country_code)
-    
+
     if members_df.empty:
         st.warning(f"⚠️ No members found for {country_display}. Please add members to the database.")
         st.info("Run the SQL scripts in the `sql/` folder to add sample members.")
     else:
         members = members_df.to_dict('records')
-        
+
         # Display members in a grid
         cols = st.columns(3)
-        
+
         for idx, member in enumerate(members):
             with cols[idx % 3]:
                 is_selected = st.session_state.selected_member == member.get('member_id')
@@ -157,9 +157,9 @@ if page == "Advisory":
                     type="primary" if is_selected else "secondary"
                 ):
                     st.session_state.selected_member = member.get('member_id')
-                
+
                 render_member_card(member, is_selected, country_display)
-        
+
         # Get currently selected member
         if st.session_state.selected_member:
             member = next(
@@ -169,12 +169,12 @@ if page == "Advisory":
         else:
             member = members[0]
             st.session_state.selected_member = member.get('member_id')
-        
+
         st.markdown("---")
-        
+
         # Query input
         st.subheader("💬 Ask Your Question")
-        
+
         # Sample questions for the country
         sample_questions = {
             "Australia": [
@@ -198,21 +198,21 @@ if page == "Advisory":
                 "📊 How is my Employees' Pension Scheme (EPS) calculated at retirement?"
             ]
         }
-        
+
         st.caption("💡 Try these sample questions:")
         cols = st.columns(3)
-        
+
         for idx, q in enumerate(sample_questions.get(country_display, [])[:3]):
             with cols[idx]:
                 if st.button(q, key=f"sample_q_{idx}", use_container_width=True):
                     st.session_state.query_input = q
-        
+
         question = st.text_input(
             "Your question:",
             placeholder="Type your retirement/pension question here...",
             key="query_input"
         )
-        
+
         # Get recommendation button
         if st.button("🚀 Get Recommendation", type="primary", use_container_width=True):
             if not question:
@@ -223,7 +223,7 @@ if page == "Advisory":
                     if not st.session_state.show_logs:
                         progress_placeholder = st.empty()
                         progress_placeholder.info("⏳ Processing your request. Estimated completion: 5-10 seconds.")
-                    
+
                     try:
                         # FIXED: Call agent_query instead of run_agent_interaction
                         answer, citations, response_dict, judge_resp, judge_verdict, error_info, tools_called = agent_query(
@@ -235,7 +235,7 @@ if page == "Advisory":
                             judge_llm_fn=None,
                             mlflow_experiment_path=None
                         )
-                        
+
                         # Build agent_output dict for compatibility
                         agent_output = {
                             "answer": answer,
@@ -247,13 +247,13 @@ if page == "Advisory":
                             "tools_called": tools_called,
                             "tool_used": f"{country_display} Calculator"
                         }
-                        
+
                         st.session_state.agent_output = agent_output
-                        
+
                         # Clear progress message
                         if not st.session_state.show_logs:
                             progress_placeholder.empty()
-                            
+
                     except Exception as e:
                         st.error(f"An error occurred: {str(e)}")
                         import traceback
@@ -261,24 +261,24 @@ if page == "Advisory":
                         st.session_state.agent_output = None
                         if not st.session_state.show_logs:
                             progress_placeholder.empty()
-        
+
         # Show logs IF enabled
         if st.session_state.show_logs:
             member_data = member if st.session_state.agent_output else None
             tools_called = st.session_state.agent_output.get("tools_called", []) if st.session_state.agent_output else []
             render_progress(member_data, tools_called, True)
-        
+
         # Display results
         if st.session_state.agent_output:
             st.markdown("---")
             st.subheader("📊 Recommendation")
-            
+
             # Main answer
             st.success(st.session_state.agent_output["answer"])
-            
+
             # Post-answer disclaimer
             render_postanswer_disclaimer(country_display)
-            
+
             # Citations
             st.markdown("#### 📚 Citations & References")
             citations = st.session_state.agent_output.get("citations", [])
@@ -287,7 +287,7 @@ if page == "Advisory":
                     st.caption(f"[{i}] {cite}")
             else:
                 st.caption("No citations available.")
-            
+
             # Judge validation (if available)
             if st.session_state.agent_output.get("judge_verdict"):
                 with st.expander("🔍 Quality Validation Details"):
@@ -298,7 +298,7 @@ if page == "Advisory":
                         st.error(f"❌ Validation: {verdict}")
                     else:
                         st.warning(f"⚠️ Validation: {verdict}")
-                    
+
                     if st.session_state.agent_output.get("judge_response"):
                         st.text(st.session_state.agent_output["judge_response"])
 
@@ -308,9 +308,9 @@ if page == "Advisory":
 
 elif page == "Audit/Governance":
     st.title("🔒 Governance & Developer Tools")
-    
+
     tab1, tab2 = st.tabs(["🔒 Governance", "🛠️ Developer"])
-    
+
     # ========================================================================
     # GOVERNANCE TAB
     # ========================================================================
@@ -321,38 +321,38 @@ All user interactions are logged to Unity Catalog for compliance and governance.
 
 **Table:** `{ARCHITECTURECONTENT.get('infra_details', 'Unity Catalog governance table')}`
         """)
-        
+
         # Filter options
         col1, col2, col3 = st.columns(3)
-        
+
         with col1:
             filter_country_display = st.selectbox(
                 "Filter by Country",
                 ["All"] + COUNTRIES,
                 key="audit_country_filter"
             )
-        
+
         # Convert display name to code if not "All"
         filter_country = None if filter_country_display == "All" else COUNTRY_DISPLAY_TO_CODE.get(filter_country_display)
-        
+
         with col2:
             filter_user = st.text_input(
                 "Filter by User ID",
                 placeholder="Leave empty for all",
                 key="audit_user_filter"
             )
-        
+
         with col3:
             filter_session = st.text_input(
                 "Filter by Session",
                 placeholder="Leave empty for all",
                 key="audit_session_filter"
             )
-        
+
         # Apply filters
         user_filter = filter_user if filter_user else None
         session_filter = filter_session if filter_session else None
-        
+
         # Retrieve audit logs
         with st.spinner("Loading audit logs..."):
             audit_df = get_audit_log(
@@ -360,24 +360,24 @@ All user interactions are logged to Unity Catalog for compliance and governance.
                 user_id=user_filter,
                 country=filter_country
             )
-        
+
         # Display audit table
         render_audit_table(audit_df)
-        
+
         # Summary metrics
         if not audit_df.empty:
             st.markdown("---")
-            st.subheader("�� Summary Metrics")
-            
+            st.subheader("📈 Summary Metrics")
+
             col1, col2, col3, col4 = st.columns(4)
-            
+
             with col1:
                 st.metric("Total Queries", len(audit_df))
-            
+
             with col2:
                 total_cost = audit_df['cost'].sum() if 'cost' in audit_df.columns else 0
                 st.metric("Total Cost", f"${total_cost:.2f}")
-            
+
             with col3:
                 if 'judge_verdict' in audit_df.columns:
                     pass_count = (audit_df['judge_verdict'] == 'Pass').sum()
@@ -385,14 +385,14 @@ All user interactions are logged to Unity Catalog for compliance and governance.
                     st.metric("Pass Rate", f"{pass_rate:.1f}%")
                 else:
                     st.metric("Pass Rate", "N/A")
-            
+
             with col4:
                 if 'error_info' in audit_df.columns:
                     error_count = audit_df['error_info'].notna().sum()
                     st.metric("Errors", error_count)
                 else:
                     st.metric("Errors", 0)
-    
+
     # ========================================================================
     # DEVELOPER TAB
     # ========================================================================
@@ -401,7 +401,7 @@ All user interactions are logged to Unity Catalog for compliance and governance.
         st.markdown("""
 View MLflow experiment runs and trigger evaluations.
         """)
-        
+
         # MLflow experiment selector
         exp_type = st.radio(
             "Select Experiment Type",
@@ -409,31 +409,31 @@ View MLflow experiment runs and trigger evaluations.
             horizontal=True,
             key="mlflow_exp_type"
         )
-        
+
         exp_path = MLFLOW_PROD_EXPERIMENT_PATH if exp_type == "Production" else st.session_state.get("mlflow_offline_path", "/Shared/experiments/offline/retirement-eval")
-        
+
         st.info(f"📊 Viewing: `{exp_path}`")
-        
+
         # Display MLflow runs
         with st.spinner("Loading MLflow runs..."):
             show_mlflow_runs(exp_path=exp_path)
-        
+
         st.markdown("---")
-        
+
         # Evaluation tools
         st.subheader("🧪 Run Evaluation")
-        
+
         eval_mode = st.radio(
             "Evaluation Mode",
             ["Online (Single Query)", "Offline (Batch CSV)"],
             key="eval_mode"
         )
-        
+
         if eval_mode == "Online (Single Query)":
             st.markdown("Test a single query immediately:")
             eval_country_display = st.selectbox("Country", COUNTRIES, key="eval_country")
             eval_query = st.text_input("Query", key="eval_query")
-            
+
             if st.button("▶️ Run Online Evaluation"):
                 if eval_query:
                     st.info("Online evaluation triggered. Check MLflow for results.")
@@ -444,17 +444,18 @@ View MLflow experiment runs and trigger evaluations.
 Run batch evaluation from a CSV file:
 
 **CSV Format:**
+```
 user_id,country,query_str,age,super_balance
 user001,AU,"How much can I withdraw?",65,450000
-
+```
 
 **Command:**
+```
 python run_evaluation.py --mode offline --csv_path /path/to/eval_data.csv
-
-text
+```
             """)
             st.info("Upload CSV and run evaluation from Databricks notebook or terminal.")
 
 # Footer
 st.markdown("---")
-st.caption(f"🏦 {BRANDCONFIG['brand_name']} | Session: {st.session_state.session_id[:8]}... | Support: {BRANDCONFIG.get('support_email', 'support@example.com')}"
+st.caption(f"🏦 {BRANDCONFIG['brand_name']} | Session: {st.session_state.session_id[:8]}... | Support: {BRANDCONFIG.get('support_email', 'support@example.com')}")
