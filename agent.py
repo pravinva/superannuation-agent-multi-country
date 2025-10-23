@@ -14,29 +14,29 @@ from datetime import datetime
 
 class MultiCountryAdvisorAgent:
     """Multi-country retirement advisor using Claude Opus 4.1 with self-correction"""
-    
+
     def __init__(self, country="Australia"):
         self.w = WorkspaceClient()
         self.country = country
         self.main_endpoint = MAIN_LLM_ENDPOINT
         self.judge_endpoint = JUDGE_LLM_ENDPOINT
         self.session_id = str(uuid.uuid4())
-        
+
         # Initialize LLM Judge validator
         self.validator = LLMJudgeValidator(judge_endpoint=self.judge_endpoint)
-        
+
         print(f"✓ Multi-Country Advisor Agent initialized")
         print(f"  Country: {country}")
         print(f"  Main LLM: {self.main_endpoint}")
         print(f"  Judge LLM: {self.judge_endpoint}")
-    
+
     def call_claude(self, messages, max_tokens=2000, temperature=None, endpoint=None):
         """Call Claude endpoint via SDK"""
         start_time = time.time()
-        
+
         temp = temperature if temperature is not None else MAIN_LLM_TEMPERATURE
         endpoint_name = endpoint if endpoint else self.main_endpoint
-        
+
         chat_messages = []
         for msg in messages:
             if isinstance(msg, dict):
@@ -49,19 +49,19 @@ class MultiCountryAdvisorAgent:
                 chat_messages.append(ChatMessage(role=role, content=msg['content']))
             else:
                 chat_messages.append(msg)
-        
+
         response = self.w.serving_endpoints.query(
             name=endpoint_name,
             messages=chat_messages,
             max_tokens=max_tokens,
             temperature=temp
         )
-        
+
         elapsed = time.time() - start_time
         print(f"⏱️  Claude call: {elapsed:.2f}s (tokens={max_tokens}, temp={temp})")
-        
+
         return response.choices[0].message.content, elapsed
-    
+
     def _convert_to_int(self, value, default=0):
         """Safely convert to int"""
         if value is None:
@@ -70,14 +70,14 @@ class MultiCountryAdvisorAgent:
             return int(value)
         except (ValueError, TypeError):
             return default
-    
+
     def _log_query_audit(self, member_id, user_query, response_text, total_time, tools_count):
         """Log to Unity Catalog audit table"""
         try:
             from audit.audit_utils import log_query_event
-            
+
             truncated = response_text[:15000] if len(response_text) > 15000 else response_text
-            
+
             log_query_event(
                 user_id=member_id,
                 session_id=self.session_id,
@@ -95,39 +95,39 @@ class MultiCountryAdvisorAgent:
             print(f"✓ Audit logged: session {self.session_id[:8]}")
         except Exception as e:
             print(f"❌ Audit logging failed: {e}")
-    
+
     def process_query(self, member_id, user_query, status_callback=None,
                       temperature=None, anonymize=True, enable_validation=True):
         """Main agentic workflow with hybrid validation and retry loop"""
-        
+
         overall_start = time.time()
         temp = temperature if temperature is not None else MAIN_LLM_TEMPERATURE
-        
+
         print(f"\n{'='*70}")
         print(f"AGENT: Processing query for {self.country}")
         print(f"Member: {member_id}")
         print(f"Query: {user_query}")
         print(f"{'='*70}\n")
-        
+
         timings = {}
         tools_called = []
-        
+
         # Get member profile
         profile_df = get_member_by_id(member_id)
         if profile_df is None or profile_df.empty:
             return "Member profile not found", {"error": "Member not found"}
-        
+
         profile = profile_df.to_dict('records')[0]
-        
+
         # Convert numeric fields
         numeric_fields = ['age', 'super_balance', 'other_assets', 'debt',
                          'preservation_age', 'annual_income_outside_super',
                          'dependents', 'account_based_pension']
-        
+
         for field in numeric_fields:
             if field in profile:
                 profile[field] = self._convert_to_int(profile[field])
-        
+
         # Anonymization
         real_name = profile['name']
         if anonymize:
@@ -136,30 +136,30 @@ class MultiCountryAdvisorAgent:
             print(f"🔒 Anonymized: '{real_name}' → '{member_token}'")
         else:
             member_token = None
-        
+
         # STEP 1: Call country-specific calculator
         if status_callback:
             status_callback("tool_start", f"Calling {self.country} calculator...")
-        
+
         tool_start = time.time()
         country_tool = get_country_tool(self.country)
         tool_result = country_tool(member_id, withdrawal_amount=100000)
         tool_duration = time.time() - tool_start
-        
+
         tools_called.append({
             "name": f"{self.country} Calculator",
             "duration": tool_duration,
             "status": "completed"
         })
-        
+
         print(f"✓ Tool executed in {tool_duration:.2f}s")
-        
+
         if status_callback:
             status_callback("tool_complete", None)
-        
+
         # STEP 2: Multi-stage synthesis with validation retry loop
         regulations = COUNTRY_REGULATIONS.get(self.country, {})
-        
+
         context = f"""MEMBER PROFILE:
 Name: {profile['name']}
 Age: {profile.get('age')}
@@ -176,12 +176,12 @@ CALCULATOR RESULTS:
 
 USER QUESTION:
 {user_query}"""
-        
+
         if status_callback:
             status_callback("synthesis_start", None)
-        
+
         synthesis_start = time.time()
-        
+
         # ===================================================================
         # RETRY LOOP: Try up to 3 times (1 initial + 2 retries)
         # ===================================================================
@@ -190,21 +190,22 @@ USER QUESTION:
         validation_passed = False
         validation_feedback = None
         validation_result = None
-        
+
         while attempt <= MAX_RETRIES and not validation_passed:
-            
+
             attempt_label = f"Attempt {attempt + 1}/{MAX_RETRIES + 1}"
             print(f"\n{'='*70}")
             print(f"SYNTHESIS {attempt_label}")
             if validation_feedback:
                 print(f"RETRY REASON: Judge found violations")
             print(f"{'='*70}\n")
-            
+
             # Stage 1: Situation
             if status_callback:
                 status_callback("synthesis_stage", {"stage": 1, "task": f"Situation ({attempt_label})"})
-            
-            situation_prompt = f"""{context}
+
+            situation_prompt = f"""""CONTEXT:
+{context}
 
 Write EXACTLY 2 sentences about {profile['name']}'s retirement situation in {self.country}.
 
@@ -212,23 +213,27 @@ RULES:
 - EXACTLY 2 sentences, max 40 words each
 - Use their actual data (age, balance)
 - NO asterisks or special characters
+- ALWAYS use spaces around currency: "$100,000 tax-free" NOT "$100,000tax-free"
+- ALWAYS use commas in large numbers: "100,000" NOT "100000"
+- ALWAYS add spaces around math symbols: "$ 32,500 - $ 37,000" NOT "$32,500-$37,000"
 
 {validation_feedback if validation_feedback else ''}
 
 Write directly (no headers)."""
-            
+
             situation, sit_time = self.call_claude(
                 [{"role": "user", "content": situation_prompt}],
                 max_tokens=250,
                 temperature=temp
             )
             timings[f'situation_attempt_{attempt}'] = sit_time
-            
+
             # Stage 2: Insights
             if status_callback:
                 status_callback("synthesis_stage", {"stage": 2, "task": f"Insights ({attempt_label})"})
-            
-            insights_prompt = f"""{context}
+
+            insights_prompt = f"""CONTEXT:
+{context}
 
 Write EXACTLY 3 key insights for {self.country} retirement planning.
 
@@ -236,23 +241,26 @@ RULES:
 - EXACTLY 3 bullet points
 - Max 30 words per bullet
 - Use actual numbers from tool results
+- ALWAYS use spaces: "$100,000 tax-free" NOT "$100,000tax-free"
+- ALWAYS use commas: "100,000" NOT "100000"
 
 {validation_feedback if validation_feedback else ''}
 
 Write directly (no headers)."""
-            
+
             insights, ins_time = self.call_claude(
                 [{"role": "user", "content": insights_prompt}],
                 max_tokens=450,
                 temperature=temp
             )
             timings[f'insights_attempt_{attempt}'] = ins_time
-            
+
             # Stage 3: Recommendations
             if status_callback:
                 status_callback("synthesis_stage", {"stage": 3, "task": f"Recommendations ({attempt_label})"})
-            
-            recommendations_prompt = f"""{context}
+
+            recommendations_prompt = f"""CONTEXT:
+{context}
 
 PREVIOUS:
 {situation}
@@ -263,28 +271,30 @@ Write EXACTLY 2 actionable recommendations.
 RULES:
 - EXACTLY 2 numbered items
 - ONE sentence each, max 35 words
+- ALWAYS use spaces: "$100,000 tax-free" NOT "$100,000tax-free"
+- ALWAYS use commas: "100,000" NOT "100000"
 
 {validation_feedback if validation_feedback else ''}
 
 Write directly (no headers)."""
-            
+
             recommendations, rec_time = self.call_claude(
                 [{"role": "user", "content": recommendations_prompt}],
                 max_tokens=300,
                 temperature=temp
             )
             timings[f'recommendations_attempt_{attempt}'] = rec_time
-            
+
             # ===================================================================
             # VALIDATION: Deterministic (fast) → LLM Judge (accurate)
             # ===================================================================
-            
+
             if enable_validation:
                 if status_callback:
                     status_callback("validation_start", f"Validating ({attempt_label})...")
-                
+
                 full_response = f"{situation}\n\n{insights}\n\n{recommendations}"
-                
+
                 # Phase 1: Fast deterministic check
                 print("🔧 Running deterministic pre-check...")
                 det_result = DeterministicValidator.validate_response(
@@ -292,10 +302,10 @@ Write directly (no headers)."""
                     member_profile=profile,
                     tool_results=tool_result
                 )
-                
+
                 critical_violations = [v for v in det_result.get('violations', []) 
                                      if v.get('severity') == 'CRITICAL']
-                
+
                 if critical_violations:
                     # Fast fail - found critical issues
                     print(f"❌ Deterministic check failed: {len(critical_violations)} critical issues")
@@ -313,25 +323,25 @@ Write directly (no headers)."""
                             user_query=user_query
                         )
                         validation_passed = validation_result.get('passed', True)
-                        
+
                     except Exception as e:
                         print(f"⚠️  LLM Judge failed: {e}")
                         validation_result = det_result
                         validation_passed = det_result.get('passed', True)
-                
+
                 # Store validation result
                 tool_result[f'_validation_attempt_{attempt}'] = validation_result
-                
+
                 print(f"⚖️  Validation: {validation_result.get('passed')} (confidence: {validation_result.get('confidence', 0):.2f})")
-                
+
                 # If validation failed and we have retries left
                 if not validation_passed and attempt < MAX_RETRIES:
                     print(f"\n⚠️  Validation failed. Preparing retry {attempt + 2}/{MAX_RETRIES + 1}...")
-                    
+
                     # Build feedback for retry
                     violations = validation_result.get('violations', [])
                     reasoning = validation_result.get('reasoning', '')
-                    
+
                     validation_feedback = f"""
 ⚠️ CRITICAL: Your previous response had compliance issues. Fix these before proceeding:
 
@@ -340,7 +350,7 @@ Write directly (no headers)."""
                         validation_feedback += f"{i}. **{violation.get('code')}** ({violation.get('severity')}): {violation.get('detail')}\n"
                         if violation.get('evidence'):
                             validation_feedback += f"   Evidence: {violation.get('evidence')[:150]}\n"
-                    
+
                     validation_feedback += f"""
 Judge's reasoning: {reasoning}
 
@@ -348,16 +358,16 @@ CRITICAL INSTRUCTIONS FOR THIS RETRY:
 1. Fix ALL violations listed above
 2. Use ONLY data from member profile and tool results
 3. Ensure mathematical accuracy (double-check age comparisons)
-4. No asterisks, proper currency spacing
+4. Always use proper spacing: "$100,000 tax-free" NOT "$100,000tax-free"
 5. Be precise about eligibility thresholds
 """
-                    
+
                     # Increment attempt counter
                     attempt += 1
-                    
+
                     if status_callback:
                         status_callback("retry", {"attempt": attempt + 1, "violations": len(violations)})
-                    
+
                 else:
                     # Either passed or out of retries
                     break
@@ -366,28 +376,28 @@ CRITICAL INSTRUCTIONS FOR THIS RETRY:
                 validation_passed = True
                 validation_result = {'passed': True, 'confidence': 1.0, 'violations': []}
                 break
-        
+
         # End of retry loop
         total_synthesis_time = time.time() - synthesis_start
         timings['synthesis_total'] = total_synthesis_time
         timings['synthesis_attempts'] = attempt + 1
-        
+
         # Store final validation result
         tool_result['_validation'] = validation_result
         tool_result['_validation_attempts'] = attempt + 1
         tool_result['_validation_passed'] = validation_passed
-        
+
         if status_callback:
             status_callback("synthesis_complete", {"attempts": attempt + 1, "passed": validation_passed})
-        
+
         print(f"\n{'='*70}")
         print(f"SYNTHESIS COMPLETE: {attempt + 1} attempt(s), Validation: {validation_passed}")
         print(f"Total synthesis time: {total_synthesis_time:.2f}s")
         print(f"{'='*70}\n")
-        
+
         # Build final response
         disclaimer = POST_ANSWER_DISCLAIMERS.get(self.country, "")
-        
+
         response = f"""## Your Current Situation
 
 {situation}
@@ -407,24 +417,23 @@ CRITICAL INSTRUCTIONS FOR THIS RETRY:
 {disclaimer}
 
 *Response for {self.country} | Session: {self.session_id[:8]} | Validated: {attempt + 1} attempt(s)*"""
-        
+
         # De-anonymize
         if anonymize and member_token:
             response = response.replace(member_token, real_name)
             print(f"🔓 Restored: '{member_token}' → '{real_name}'")
-        
+
         # Add metadata
         tool_result['_timings'] = timings
         tool_result['_tools_called'] = tools_called
-        
+
         total_elapsed = time.time() - overall_start
         timings['total'] = total_elapsed
-        
+
         # Log audit
         self._log_query_audit(member_id, user_query, response, total_elapsed, len(tools_called))
-        
+
         print(f"\n✅ Completed in {total_elapsed:.2f}s")
         print(f"{'='*70}\n")
-        
-        return response, tool_result
 
+        return response, tool_result
