@@ -1,4 +1,6 @@
 # ui_components.py
+# VERSION: 2.0 - HTML FIX APPLIED
+
 """UI components for the retirement advisory app"""
 
 import streamlit as st
@@ -6,6 +8,8 @@ import os
 import pandas as pd
 from config import BRANDCONFIG, NATIONAL_COLORS
 from country_content import COUNTRY_PROMPTS, COUNTRY_DISCLAIMERS, POST_ANSWER_DISCLAIMERS
+ 
+st.sidebar.write("✅ ui_components.py VERSION 2.0 LOADED")
 
 
 def render_logo():
