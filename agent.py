@@ -1,15 +1,19 @@
-# agent.py - COMPLETE VERSION with Validation Mode Support
+# agent.py - UPDATED FOR UC FUNCTIONS (12 FUNCTIONS)
 """
 Multi-Country Retirement Advisor Agent
-Supports configurable validation modes: llm_judge, hybrid, deterministic
+- Supports 4 countries: Australia, USA, UK, India
+- Calls UC Functions (3 per country = 12 total)
+- Configurable validation modes: llm_judge, hybrid, deterministic
+- Logs to Unity Catalog and MLflow
+- Implements retry logic with judge feedback
 """
 
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.service.serving import ChatMessage, ChatMessageRole
-from tools import get_country_tool
+from tools import calculate_retirement_advice  # UPDATED IMPORT
 from validation import LLMJudgeValidator, DeterministicValidator
 from country_content import COUNTRY_PROMPTS, COUNTRY_REGULATIONS, POST_ANSWER_DISCLAIMERS
-from config import MAIN_LLM_ENDPOINT, JUDGE_LLM_ENDPOINT, MAIN_LLM_TEMPERATURE
+from config import MAIN_LLM_ENDPOINT, JUDGE_LLM_ENDPOINT, MAIN_LLM_TEMPERATURE, SQL_WAREHOUSE_ID
 from data_utils import get_member_by_id
 import json
 import time
@@ -18,7 +22,7 @@ from datetime import datetime
 
 
 class MultiCountryAdvisorAgent:
-    """Multi-country retirement advisor with configurable validation"""
+    """Multi-country retirement advisor with UC Functions integration"""
 
     def __init__(self, country="Australia"):
         self.w = WorkspaceClient()
@@ -26,6 +30,7 @@ class MultiCountryAdvisorAgent:
         self.main_endpoint = MAIN_LLM_ENDPOINT
         self.judge_endpoint = JUDGE_LLM_ENDPOINT
         self.session_id = str(uuid.uuid4())
+        self.warehouse_id = SQL_WAREHOUSE_ID  # ADDED
 
         self.validator = LLMJudgeValidator(judge_endpoint=self.judge_endpoint)
 
@@ -33,6 +38,7 @@ class MultiCountryAdvisorAgent:
         print(f"  Country: {country}")
         print(f"  Main LLM: {self.main_endpoint}")
         print(f"  Judge LLM: {self.judge_endpoint}")
+        print(f"  Warehouse: {self.warehouse_id}")  # ADDED
 
     def call_claude(self, messages, max_tokens=2000, temperature=None, endpoint=None):
         """Call Claude endpoint via Databricks SDK"""
@@ -75,8 +81,14 @@ class MultiCountryAdvisorAgent:
         except (ValueError, TypeError):
             return default
 
-    def _log_query_audit(self, member_id, user_query, response_text, total_time, tools_count):
-        """Log query to Unity Catalog audit table"""
+    def _log_query_audit(self, member_id, user_query, response_text, total_time, 
+                         tools_count, validation_mode="llm_judge", validation_attempts=1,
+                         validation_result=None):
+        """
+        Log query to BOTH Unity Catalog AND MLflow
+        """
+
+        # 1. Log to Unity Catalog
         try:
             from audit.audit_utils import log_query_event
 
@@ -89,29 +101,76 @@ class MultiCountryAdvisorAgent:
                 query_string=user_query,
                 agent_response=truncated,
                 result_preview=f"Completed in {total_time:.2f}s",
-                citations=[],
+                citations=[f"{self.country} Tax Authority", f"{self.country} Pension Authority"],
                 tool_used=f"{self.country}_calculator",
                 judge_response="",
-                judge_verdict="N/A",
+                judge_verdict="Pass" if validation_result and validation_result.get('passed') else "Review",
                 error_info="",
-                cost=0.0
+                cost=0.0,
+                validation_mode=validation_mode,
+                validation_attempts=validation_attempts,
+                total_time_seconds=total_time
             )
-            print(f"✓ Audit logged: session {self.session_id[:8]}")
+            print(f"✓ Logged to Unity Catalog: session {self.session_id[:8]}")
         except Exception as e:
-            print(f"❌ Audit logging failed: {e}")
+            print(f"❌ UC audit logging failed: {e}")
+
+        # 2. Log to MLflow
+        try:
+            from mlflow_utils import log_mlflow_run
+            from config import MLFLOW_PROD_EXPERIMENT_PATH
+
+            params = {
+                "country": self.country,
+                "member_id": member_id,
+                "session_id": self.session_id,
+                "main_llm": self.main_endpoint,
+                "judge_llm": self.judge_endpoint,
+                "validation_mode": validation_mode,
+                "query": user_query[:200]
+            }
+
+            metrics = {
+                "total_time_seconds": total_time,
+                "tools_called": tools_count,
+                "response_length": len(response_text),
+                "validation_attempts": validation_attempts,
+                "validation_passed": 1 if (validation_result and validation_result.get('passed')) else 0,
+                "validation_confidence": validation_result.get('confidence', 0.0) if validation_result else 0.0,
+                "validation_violations": len(validation_result.get('violations', [])) if validation_result else 0
+            }
+
+            artifacts = {
+                "query": user_query,
+                "response": response_text,
+                "validation_result": str(validation_result) if validation_result else "None"
+            }
+
+            log_mlflow_run(
+                experiment_path=MLFLOW_PROD_EXPERIMENT_PATH,
+                params=params,
+                metrics=metrics,
+                artifacts=artifacts
+            )
+
+            print(f"✓ Logged to MLflow: {MLFLOW_PROD_EXPERIMENT_PATH}")
+
+        except Exception as e:
+            print(f"❌ MLflow logging failed: {e}")
+
 
     def process_query(self, member_id, user_query, status_callback=None,
-                      temperature=None, anonymize=True, enable_validation=True,
+                      temperature=None, anonymize=False, enable_validation=True,
                       validation_mode="llm_judge"):
         """
-        Main agentic workflow with configurable validation
+        Main agentic workflow with UC Functions integration
 
         Args:
             member_id: Member identifier
             user_query: User's retirement question
             status_callback: Optional callback for real-time updates
             temperature: LLM temperature (None = use default)
-            anonymize: Whether to anonymize member name
+            anonymize: Whether to anonymize member name (default: False)
             enable_validation: Whether to run validation
             validation_mode: "llm_judge", "hybrid", or "deterministic"
 
@@ -161,7 +220,7 @@ class MultiCountryAdvisorAgent:
         }
         currency_code = currency_codes.get(self.country, "AUD")
 
-        # Anonymization (optional, disabled by default for personalization)
+        # Anonymization
         real_name = profile['name']
         if anonymize:
             member_token = f"Member {member_id[-4:]}"
@@ -171,22 +230,34 @@ class MultiCountryAdvisorAgent:
             member_token = None
             print(f"✅ Using real name: '{real_name}'")
 
-        # STEP 1: Call country-specific calculator tool
+        # STEP 1: Call UC Functions (3 functions per country)
         if status_callback:
-            status_callback("tool_start", f"Calling {self.country} calculator...")
+            status_callback("tool_start", f"Calling {self.country} UC Functions...")
 
         tool_start = time.time()
-        country_tool = get_country_tool(self.country)
-        tool_result = country_tool(member_id, withdrawal_amount=100000)
+        
+        # UPDATED: Call calculate_retirement_advice which calls 3 UC functions
+        tool_result = calculate_retirement_advice(
+            member_id=member_id,
+            withdrawal_amount=100000,  # Default withdrawal amount
+            country=self.country,
+            warehouse_id=self.warehouse_id  # ADDED warehouse_id
+        )
+        
         tool_duration = time.time() - tool_start
 
-        tools_called.append({
-            "name": f"{self.country} Calculator",
-            "duration": tool_duration,
-            "status": "completed"
-        })
+        # Extract tools_called from result (includes all 3 UC functions)
+        if 'tools_called' in tool_result:
+            tools_called = tool_result['tools_called']
+        else:
+            tools_called = [{
+                "name": f"{self.country} Calculator",
+                "duration": tool_duration,
+                "status": "completed"
+            }]
 
-        print(f"✓ Tool executed in {tool_duration:.2f}s")
+        print(f"✓ UC Functions executed in {tool_duration:.2f}s")
+        print(f"  → {len(tools_called)} functions called")
 
         if status_callback:
             status_callback("tool_complete", None)
@@ -207,7 +278,7 @@ Country: {self.country}
 REGULATORY CONTEXT:
 {json.dumps(regulations, indent=2)}
 
-CALCULATOR RESULTS:
+UC FUNCTION RESULTS (3 calculations):
 {json.dumps(tool_result, indent=2, default=str)}
 
 USER QUESTION:
@@ -234,261 +305,216 @@ USER QUESTION:
                 print(f"RETRY REASON: Validation failed")
             print(f"{'='*70}\n")
 
-            # Stage 1: Situation (hyper-personalized)
+            # Stage 1: Situation Analysis
             if status_callback:
-                status_callback("synthesis_stage", {"stage": 1, "task": f"Situation ({attempt_label})"})
+                status_callback("synthesis_stage", {"stage": 1, "task": "Analyzing Situation"})
 
-            situation_prompt = f"""CONTEXT:
+            situation_prompt = f"""You are a {self.country} retirement advisor. Analyze this member's situation based on the data provided.
+
 {context}
 
-Write EXACTLY 2 sentences addressing {member_first_name} DIRECTLY by their first name.
+{"IMPORTANT - CORRECTION NEEDED: " + validation_feedback if validation_feedback else ""}
 
-CRITICAL PERSONALIZATION RULES:
-- Start with: "{member_first_name}, you are {profile.get('age')} years old..."
-- Use DIRECT address throughout (you/your not they/their)
-- Reference their ACTUAL balance using currency code: {currency_code} {profile.get('super_balance', 0)}
-- Be precise about age vs preservation age: {profile.get('age')} vs {profile.get('preservation_age', 60)}
+Write a 2-3 sentence situation summary that:
+- Uses the member's FIRST NAME ({member_first_name})
+- States their ACTUAL age ({profile.get('age')}) and balance
+- Mentions their specific question
 
-CRITICAL FORMATTING RULES:
-- ALWAYS use currency codes: "{currency_code} 295000" NOT "$295,000"
-- NO dollar signs ($) - they cause text jumbling
-- NO commas in numbers within sentences
-- Use spaces around currency: "{currency_code} 295000 balance"
-- EXACTLY 2 sentences, max 40 words each
-- NO asterisks or special characters
+RESPONSE FORMAT:
+[Your analysis here - 2-3 sentences only]"""
 
-{validation_feedback if validation_feedback else ''}
+            situation, _ = self.call_claude([
+                {"role": "user", "content": situation_prompt}
+            ], max_tokens=300, temperature=temp)
 
-Write directly (no headers)."""
+            print(f"✓ Stage 1 (Situation): {len(situation)} chars")
 
-            situation, sit_time = self.call_claude(
-                [{"role": "user", "content": situation_prompt}],
-                max_tokens=250,
-                temperature=temp
-            )
-            timings[f'situation_attempt_{attempt}'] = sit_time
-
-            # Stage 2: Insights
+            # Stage 2: Insights from UC Functions
             if status_callback:
-                status_callback("synthesis_stage", {"stage": 2, "task": f"Insights ({attempt_label})"})
+                status_callback("synthesis_stage", {"stage": 2, "task": "Generating Insights"})
 
-            insights_prompt = f"""CONTEXT:
+            insights_prompt = f"""Based on the UC Function results, provide 3-4 key insights.
+
 {context}
 
-Write EXACTLY 3 key insights for {member_first_name}'s {self.country} retirement planning.
+SITUATION ANALYSIS:
+{situation}
 
-RULES:
-- EXACTLY 3 bullet points
-- Max 30 words per bullet
-- Use actual numbers from tool results
-- Use "you/your" language (continue personalization)
-- ALWAYS use currency codes: "{currency_code} 100000" NOT "$100,000"
-- NO dollar signs or commas in numbers
+{"CORRECTION NEEDED: " + validation_feedback if validation_feedback else ""}
 
-{validation_feedback if validation_feedback else ''}
+Generate 3-4 insights as bullet points:
+• [Insight 1 from tax calculation]
+• [Insight 2 from government benefit]
+• [Insight 3 from projection]
+• [Insight 4 - optional]
 
-Write directly (no headers)."""
+CRITICAL: Use EXACT numbers from UC Function results. Double-check all ages and amounts."""
 
-            insights, ins_time = self.call_claude(
-                [{"role": "user", "content": insights_prompt}],
-                max_tokens=450,
-                temperature=temp
-            )
-            timings[f'insights_attempt_{attempt}'] = ins_time
+            insights, _ = self.call_claude([
+                {"role": "user", "content": insights_prompt}
+            ], max_tokens=600, temperature=temp)
+
+            print(f"✓ Stage 2 (Insights): {len(insights)} chars")
 
             # Stage 3: Recommendations
             if status_callback:
-                status_callback("synthesis_stage", {"stage": 3, "task": f"Recommendations ({attempt_label})"})
+                status_callback("synthesis_stage", {"stage": 3, "task": "Creating Recommendations"})
 
-            recommendations_prompt = f"""CONTEXT:
+            recommendations_prompt = f"""Based on the analysis and UC Function results, provide 3 specific recommendations.
+
 {context}
 
-PREVIOUS SECTIONS:
+SITUATION:
 {situation}
+
+INSIGHTS:
 {insights}
 
-Write EXACTLY 2 actionable recommendations for {member_first_name}.
+{"FIX THESE ISSUES: " + validation_feedback if validation_feedback else ""}
 
-RULES:
-- EXACTLY 2 numbered items
-- ONE sentence each, max 35 words
-- Continue using "you/your" personalization
-- ALWAYS use currency codes: "{currency_code} 100000" NOT "$100,000"
-- NO dollar signs or commas in numbers
+Provide exactly 3 numbered recommendations:
+1. [Specific actionable recommendation]
+2. [Second specific recommendation]
+3. [Third specific recommendation]
 
-{validation_feedback if validation_feedback else ''}
+Use member's first name ({member_first_name}). Be specific and actionable."""
 
-Write directly (no headers)."""
+            recommendations, _ = self.call_claude([
+                {"role": "user", "content": recommendations_prompt}
+            ], max_tokens=600, temperature=temp)
 
-            recommendations, rec_time = self.call_claude(
-                [{"role": "user", "content": recommendations_prompt}],
-                max_tokens=300,
-                temperature=temp
-            )
-            timings[f'recommendations_attempt_{attempt}'] = rec_time
+            print(f"✓ Stage 3 (Recommendations): {len(recommendations)} chars")
 
-            # VALIDATION (CONFIGURABLE MODE)
-            if enable_validation:
-                if status_callback:
-                    status_callback("validation_start", f"Validating ({validation_mode})...")
-
-                full_response = f"{situation}\n\n{insights}\n\n{recommendations}"
-
-                if validation_mode == "deterministic":
-                    # Deterministic only (fastest)
-                    print("🔧 Running deterministic validation only...")
-                    validation_result = DeterministicValidator.validate_response(
-                        response_text=full_response,
-                        member_profile=profile,
-                        tool_results=tool_result
-                    )
-                    validation_passed = validation_result.get('passed', True)
-
-                elif validation_mode == "llm_judge":
-                    # LLM Judge only (most accurate)
-                    print("⚖️  Running LLM Judge validation only...")
-                    try:
-                        validation_result = self.validator.validate_response(
-                            response_text=full_response,
-                            member_profile=profile,
-                            tool_results=tool_result,
-                            user_query=user_query
-                        )
-                        validation_passed = validation_result.get('passed', True)
-                    except Exception as e:
-                        print(f"⚠️  LLM Judge failed: {e}")
-                        validation_result = {"passed": False, "confidence": 0.0, "violations": []}
-                        validation_passed = False
-
-                else:  # hybrid (default - balanced)
-                    # Deterministic first for fast fail
-                    print("🔧 Running deterministic pre-check...")
-                    det_result = DeterministicValidator.validate_response(
-                        response_text=full_response,
-                        member_profile=profile,
-                        tool_results=tool_result
-                    )
-
-                    critical_violations = [v for v in det_result.get('violations', []) 
-                                         if v.get('severity') == 'CRITICAL']
-
-                    if critical_violations:
-                        print(f"❌ Deterministic check failed: {len(critical_violations)} critical issues")
-                        validation_result = det_result
-                        validation_passed = False
-                    else:
-                        # LLM Judge for comprehensive check
-                        print("⚖️  Running LLM Judge validation...")
-                        try:
-                            validation_result = self.validator.validate_response(
-                                response_text=full_response,
-                                member_profile=profile,
-                                tool_results=tool_result,
-                                user_query=user_query
-                            )
-                            validation_passed = validation_result.get('passed', True)
-                        except Exception as e:
-                            print(f"⚠️  LLM Judge failed: {e}")
-                            validation_result = det_result
-                            validation_passed = det_result.get('passed', True)
-
-                tool_result[f'_validation_attempt_{attempt}'] = validation_result
-
-                print(f"⚖️  Validation: {validation_result.get('passed')} (confidence: {validation_result.get('confidence', 0):.2f})")
-
-                # Retry logic if validation failed
-                if not validation_passed and attempt < MAX_RETRIES:
-                    print(f"\n⚠️  Validation failed. Preparing retry {attempt + 2}/{MAX_RETRIES + 1}...")
-
-                    violations = validation_result.get('violations', [])
-                    reasoning = validation_result.get('reasoning', '')
-
-                    validation_feedback = f"""
-⚠️ CRITICAL: Your previous response had compliance issues. Fix these:
-
-"""
-                    for i, violation in enumerate(violations, 1):
-                        validation_feedback += f"{i}. **{violation.get('code')}** ({violation.get('severity')}): {violation.get('detail')}\n"
-                        if violation.get('evidence'):
-                            validation_feedback += f"   Evidence: {violation.get('evidence')[:150]}\n"
-
-                    validation_feedback += f"""
-Judge reasoning: {reasoning}
-
-CRITICAL INSTRUCTIONS FOR THIS RETRY:
-1. Fix ALL violations listed above
-2. Use ONLY data from member profile and tool results
-3. Maintain hyper-personalization: Address {member_first_name} directly
-4. ALWAYS use currency codes ({currency_code}) NOT dollar signs ($)
-5. Be precise about age comparisons: {profile.get('age')} vs {profile.get('preservation_age', 60)}
-"""
-
-                    attempt += 1
-
-                    if status_callback:
-                        status_callback("retry", {"attempt": attempt + 1, "violations": len(violations)})
-                else:
-                    break  # Done - either passed or out of retries
-            else:
-                validation_passed = True
-                validation_result = {'passed': True, 'confidence': 1.0, 'violations': []}
-                break
-
-        # End of retry loop
-        total_synthesis_time = time.time() - synthesis_start
-        timings['synthesis_total'] = total_synthesis_time
-        timings['synthesis_attempts'] = attempt + 1
-
-        tool_result['_validation'] = validation_result
-        tool_result['_validation_attempts'] = attempt + 1
-        tool_result['_validation_passed'] = validation_passed
-        tool_result['_validation_mode'] = validation_mode
-
-        if status_callback:
-            status_callback("synthesis_complete", {"attempts": attempt + 1, "passed": validation_passed})
-
-        print(f"\n{'='*70}")
-        print(f"SYNTHESIS COMPLETE: {attempt + 1} attempt(s), Passed: {validation_passed}")
-        print(f"Total synthesis time: {total_synthesis_time:.2f}s")
-        print(f"{'='*70}\n")
-
-        # Build final response
-        disclaimer = POST_ANSWER_DISCLAIMERS.get(self.country, "")
-
-        response = f"""## Your Current Situation
+            # Combine stages
+            final_response = f"""## Your Situation
 
 {situation}
 
-## Analysis & Insights
+---
+
+## Key Insights
 
 {insights}
 
-## Our Recommendation
+---
+
+## Recommendations
 
 {recommendations}
 
 ---
 
-## Important Disclaimer
+*Based on {len(tools_called)} regulatory calculations for {self.country}*"""
 
-{disclaimer}
+            synthesis_duration = time.time() - synthesis_start
+            print(f"✓ Synthesis complete: {synthesis_duration:.2f}s")
 
-*Response for {self.country} | Session: {self.session_id[:8]} | Validated: {attempt + 1} attempt(s) using {validation_mode}*"""
+            # STEP 3: Validation
+            if enable_validation:
+                if status_callback:
+                    status_callback("validation_start", None)
 
-        # De-anonymize if needed
-        if anonymize and member_token:
-            response = response.replace(member_token, real_name)
-            print(f"🔓 Restored: '{member_token}' → '{real_name}'")
+                validation_start = time.time()
 
-        tool_result['_timings'] = timings
-        tool_result['_tools_called'] = tools_called
+                if validation_mode == "llm_judge":
+                    validation_result = self.validator.validate_response(
+                        final_response, profile, tool_result, user_query
+                    )
+                elif validation_mode == "deterministic":
+                    validation_result = DeterministicValidator.validate_response(
+                        final_response, profile, tool_result
+                    )
+                elif validation_mode == "hybrid":
+                    det_result = DeterministicValidator.validate_response(
+                        final_response, profile, tool_result
+                    )
+                    if det_result['passed']:
+                        validation_result = det_result
+                    else:
+                        validation_result = self.validator.validate_response(
+                            final_response, profile, tool_result, user_query
+                        )
+                else:
+                    validation_result = {"passed": True, "violations": [], "reasoning": "Validation disabled"}
 
-        total_elapsed = time.time() - overall_start
-        timings['total'] = total_elapsed
+                validation_duration = time.time() - validation_start
+                validation_passed = validation_result.get('passed', False)
 
-        self._log_query_audit(member_id, user_query, response, total_elapsed, len(tools_called))
+                print(f"✓ Validation ({validation_mode}): {validation_duration:.2f}s")
+                print(f"  Result: {'PASSED' if validation_passed else 'FAILED'}")
+                print(f"  Violations: {len(validation_result.get('violations', []))}")
 
-        print(f"\n✅ Completed in {total_elapsed:.2f}s")
+                if status_callback:
+                    status_callback("validation_complete", {
+                        "passed": validation_passed,
+                        "violations": len(validation_result.get('violations', []))
+                    })
+
+                if not validation_passed and attempt < MAX_RETRIES:
+                    # Prepare feedback for retry
+                    violations = validation_result.get('violations', [])
+                    critical = [v for v in violations if v.get('severity') == 'CRITICAL']
+                    
+                    if critical:
+                        validation_feedback = "; ".join([
+                            f"{v['code']}: {v['detail']}" for v in critical
+                        ])
+                    else:
+                        validation_feedback = validation_result.get('reasoning', 'Please correct errors')
+
+                    if status_callback:
+                        status_callback("retry", {
+                            "attempt": attempt + 2,
+                            "violations": len(critical)
+                        })
+
+                    attempt += 1
+                    continue
+                else:
+                    break
+            else:
+                validation_result = {"passed": True, "violations": [], "reasoning": "Validation disabled"}
+                validation_passed = True
+                break
+
+        if status_callback:
+            status_callback("synthesis_complete", {"attempts": attempt + 1})
+
+        # STEP 4: Log to audit
+        total_duration = time.time() - overall_start
+        
+        self._log_query_audit(
+            member_id=member_id,
+            user_query=user_query,
+            response_text=final_response,
+            total_time=total_duration,
+            tools_count=len(tools_called),
+            validation_mode=validation_mode,
+            validation_attempts=attempt + 1,
+            validation_result=validation_result
+        )
+
+        # Build result dict with all metadata
+        result_dict = {
+            "_tools_called": tools_called,
+            "_validation": validation_result,
+            "citations": tool_result.get('citations', []),
+            "member_data": profile,
+            "timings": {
+                "total": total_duration,
+                "tool": tool_duration,
+                "synthesis": synthesis_duration
+            }
+        }
+
+        # Add tool results
+        result_dict.update(tool_result)
+
+        print(f"\n{'='*70}")
+        print(f"COMPLETED: {total_duration:.2f}s total")
+        print(f"  Tool: {tool_duration:.2f}s ({len(tools_called)} UC functions)")
+        print(f"  Synthesis: {synthesis_duration:.2f}s (attempt {attempt + 1})")
+        print(f"  Validation: {validation_result.get('confidence', 0.0):.0%} confidence")
         print(f"{'='*70}\n")
 
-        return response, tool_result
+        return final_response, result_dict

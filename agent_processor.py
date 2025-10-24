@@ -1,7 +1,10 @@
-# agent_processor.py - COMPLETE VERSION with Validation Mode Support
+# agent_processor.py - NO CHANGES NEEDED ✅
 """
 Agent processor wrapper that integrates with Streamlit UI
 Supports validation mode parameter and real-time progress updates
+
+NOTE: This file already works with the new tools.py because agent.py handles
+the tool calling internally. No changes needed here!
 """
 
 from agent import MultiCountryAdvisorAgent
@@ -49,11 +52,11 @@ def agent_query(user_id, country, query_str, extra_context, session_id,
                 st.progress(0.20, text="Query plan ready")
             
             elif stage == "tool_start":
-                st.info(f"⚙️ **Step 2/5:** Calling {country} Calculator...")
+                st.info(f"⚙️ **Step 2/5:** Calling {country} UC Functions (3 calculators)...")
                 st.progress(0.25, text="Executing Unity Catalog functions...")
             
             elif stage == "tool_complete":
-                st.success(f"✅ **Step 2/5 Complete:** Calculator finished")
+                st.success(f"✅ **Step 2/5 Complete:** 3 UC Functions completed")
                 st.progress(0.35, text="Calculator complete")
             
             elif stage == "synthesis_start":
@@ -117,6 +120,7 @@ def agent_query(user_id, country, query_str, extra_context, session_id,
     
     try:
         # Call agent WITH status callback and validation_mode
+        # Agent internally calls calculate_retirement_advice with warehouse_id
         response, tool_results = agent.process_query(
             member_id=member_id,
             user_query=query_str,
@@ -156,7 +160,7 @@ def agent_query(user_id, country, query_str, extra_context, session_id,
         
         tools_called = tool_results.get('_tools_called', [])
         
-        # Citations from country tool
+        # Citations from tool results (now has real citations from UC Functions!)
         citations = tool_results.get('citations', [
             f"{country} Tax Authority Guidelines",
             f"{country} Pension Regulations 2025"
@@ -184,4 +188,3 @@ def agent_query(user_id, country, query_str, extra_context, session_id,
             error_info,
             []
         )
-

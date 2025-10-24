@@ -1,5 +1,5 @@
-# audit/audit_utils.py
-"""Audit logging with proper parameter handling"""
+# audit/audit_utils.py - FIXED VERSION
+"""Audit logging with proper parameter handling - ALL PARAMETERS NOW MATCH"""
 
 import uuid
 import datetime
@@ -55,7 +55,10 @@ def log_query_event(
     judge_response,
     judge_verdict,
     error_info,
-    cost=0.0
+    cost=0.0,
+    validation_mode="llm_judge",     # ✅ FIXED: Added parameter
+    validation_attempts=1,           # ✅ FIXED: Added parameter
+    total_time_seconds=0.0          # ✅ FIXED: Added parameter
 ):
     """
     Log query event to governance table
@@ -73,6 +76,9 @@ def log_query_event(
         judge_verdict: Pass/Reject/Review/ERROR
         error_info: Error details if any
         cost: Cost of query (default 0.0)
+        validation_mode: Validation strategy used (llm_judge/hybrid/deterministic)
+        validation_attempts: Number of retry attempts
+        total_time_seconds: Total processing time in seconds
     """
     
     event_id = str(uuid.uuid4())
@@ -97,11 +103,13 @@ def log_query_event(
         if agent_response and len(agent_response) > 15000:
             agent_response = agent_response[:15000] + "... [truncated]"
         
+        # ✅ FIXED: Added validation_mode, validation_attempts, total_time_seconds to INSERT
         query = f"""
 INSERT INTO {table_path} (
     event_id, timestamp, user_id, session_id, country, query_string,
     agent_response, result_preview, cost, citations, tool_used,
-    judge_response, judge_verdict, error_info
+    judge_response, judge_verdict, error_info,
+    validation_mode, validation_attempts, total_time_seconds
 ) VALUES (
     '{event_id}',
     '{timestamp}',
@@ -116,12 +124,16 @@ INSERT INTO {table_path} (
     '{escape(tool_used)}',
     '{escape(judge_response)}',
     '{escape(judge_verdict)}',
-    '{escape(error_info)}'
+    '{escape(error_info)}',
+    '{escape(validation_mode)}',
+    {validation_attempts},
+    {total_time_seconds}
 )
 """
         
         execute_query(query)
         print(f"✓ Logged event {event_id[:8]} to governance table")
+        print(f"  Mode: {validation_mode}, Attempts: {validation_attempts}, Time: {total_time_seconds:.2f}s")
         
     except Exception as e:
         print(f"❌ Error logging to governance table: {e}")
@@ -166,4 +178,3 @@ def get_audit_log(session_id=None, user_id=None, country=None):
 def get_query_cost(event_row):
     """Get cost for a specific query event"""
     return event_row.get("cost", 0.0) if isinstance(event_row, dict) else 0.0
-

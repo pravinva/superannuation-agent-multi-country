@@ -35,8 +35,8 @@ JUDGE_LLM_MAX_TOKENS = 300
 # MLflow Configuration
 # ============================================================================
 
-MLFLOW_PROD_EXPERIMENT_PATH = "/Users/pravin.varma@databricks.com/experiments/prod/retirement-advisory"
-MLFLOW_OFFLINE_EVAL_PATH = "/Users/pravin.varma@databricks.com/offline/retirement-eval"
+MLFLOW_PROD_EXPERIMENT_PATH = "/Workspace/Users/pravin.varma@databricks.com/prodretirement-advisory"
+MLFLOW_OFFLINE_EVAL_PATH = "/Workspace/Users/pravin.varma@databricks.com/retirement-eval"
 
 # ============================================================================
 # Architecture and infrastructure details
