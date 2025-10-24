@@ -1,10 +1,14 @@
-# tools.py
+# tools.py - WITH INTELLIGENT INDIVIDUAL TOOL CALLING
 """
-Pension Calculator Tools - Complete Implementation
-Calls UC Functions in pension_calculators schema
-Fetches data from Unity Catalog tables
-Adds authoritative citations from registry
-Returns enriched responses for all 4 countries
+Pension Calculator Tools - Intelligent Implementation
+✅ NEW: Individual tool calling - Call tools one at a time
+✅ NEW: Tools metadata - Describes each tool for planning
+✅ Calls UC Functions in pension_calculators schema
+✅ Fetches data from Unity Catalog tables
+✅ Adds authoritative citations from registry
+✅ Returns enriched responses for all 4 countries
+
+KEY IMPROVEMENT: Agent can now call individual tools instead of all 3 at once
 """
 
 from databricks.sdk import WorkspaceClient
@@ -118,629 +122,592 @@ def get_citations(citation_ids, warehouse_id):
 
 
 # ============================================================================
-# AUSTRALIA CALCULATORS (3 functions)
+# ✅ NEW: TOOLS METADATA FOR PLANNING
 # ============================================================================
 
-def calculate_super_australia(member_id, withdrawal_amount, warehouse_id):
+def get_all_tools_metadata(country):
     """
-    Australia Superannuation Calculator - Calls 3 UC Functions
-    
-    Functions called:
-    1. au_calculate_tax - ATO tax calculation
-    2. au_check_pension_impact - Centrelink Age Pension
-    3. au_project_balance - Retirement projection
+    Get metadata for all available tools in a country
+    Used by agent's planning phase to decide which tools to call
     
     Args:
+        country: Country name
+    
+    Returns:
+        list of dicts with tool metadata
+    """
+    
+    metadata_by_country = {
+        "Australia": [
+            {
+                "id": "tax",
+                "name": "ATO Tax Calculator",
+                "description": "Calculates withdrawal tax based on age and preservation age. Use for: tax questions, withdrawal amounts, net income.",
+                "uc_function": "super_advisory_demo.pension_calculators.au_calculate_tax",
+                "authority": "Australian Taxation Office",
+                "citation_ids": ["AU-TAX-001"]
+            },
+            {
+                "id": "benefit",
+                "name": "Centrelink Age Pension Calculator",
+                "description": "Checks government pension eligibility and impact. Use for: Age Pension questions, Centrelink benefits, means testing.",
+                "uc_function": "super_advisory_demo.pension_calculators.au_check_pension_impact",
+                "authority": "Department of Social Services",
+                "citation_ids": ["AU-PENSION-001"]
+            },
+            {
+                "id": "projection",
+                "name": "Superannuation Projection Engine",
+                "description": "Projects future balance over time. Use for: retirement planning, longevity questions, balance projections.",
+                "uc_function": "super_advisory_demo.pension_calculators.au_project_balance",
+                "authority": "ASFA / APRA",
+                "citation_ids": ["AU-STANDARD-001"]
+            }
+        ],
+        "USA": [
+            {
+                "id": "tax",
+                "name": "IRS 401(k) Tax Calculator",
+                "description": "Calculates federal tax on 401(k) withdrawals. Use for: tax questions, withdrawal penalties, early withdrawal.",
+                "uc_function": "super_advisory_demo.pension_calculators.us_calculate_tax",
+                "authority": "Internal Revenue Service",
+                "citation_ids": ["US-TAX-001"]
+            },
+            {
+                "id": "benefit",
+                "name": "Social Security Benefits Calculator",
+                "description": "Checks Social Security eligibility and amounts. Use for: Social Security questions, benefit calculations, retirement age.",
+                "uc_function": "super_advisory_demo.pension_calculators.us_check_social_security",
+                "authority": "Social Security Administration",
+                "citation_ids": ["US-SSA-001"]
+            },
+            {
+                "id": "projection",
+                "name": "401(k) Projection Engine",
+                "description": "Projects 401(k) growth and RMDs. Use for: retirement planning, Required Minimum Distributions, future balance.",
+                "uc_function": "super_advisory_demo.pension_calculators.us_project_401k",
+                "authority": "Department of Labor / IRS",
+                "citation_ids": ["US-DOL-001"]
+            }
+        ],
+        "United Kingdom": [
+            {
+                "id": "tax",
+                "name": "HMRC Pension Tax Calculator",
+                "description": "Calculates UK pension tax and tax-free lump sum. Use for: tax questions, 25% lump sum, PAYE.",
+                "uc_function": "super_advisory_demo.pension_calculators.uk_calculate_tax",
+                "authority": "HM Revenue & Customs",
+                "citation_ids": ["UK-TAX-001"]
+            },
+            {
+                "id": "benefit",
+                "name": "State Pension Calculator",
+                "description": "Checks State Pension eligibility and amounts. Use for: State Pension questions, National Insurance, eligibility.",
+                "uc_function": "super_advisory_demo.pension_calculators.uk_check_state_pension",
+                "authority": "Department for Work and Pensions",
+                "citation_ids": ["UK-DWP-001"]
+            },
+            {
+                "id": "projection",
+                "name": "UK Pension Projection Engine",
+                "description": "Projects pension growth and drawdown. Use for: retirement planning, pension pot projections, drawdown strategies.",
+                "uc_function": "super_advisory_demo.pension_calculators.uk_project_pension",
+                "authority": "Pensions Regulator / FCA",
+                "citation_ids": ["UK-TPR-001"]
+            }
+        ],
+        "India": [
+            {
+                "id": "tax",
+                "name": "EPF Tax Calculator",
+                "description": "Calculates tax on EPF withdrawals. Use for: EPF tax questions, premature withdrawal, Form 15G/15H.",
+                "uc_function": "super_advisory_demo.pension_calculators.in_calculate_epf_tax",
+                "authority": "Income Tax Department",
+                "citation_ids": ["IN-TAX-001"]
+            },
+            {
+                "id": "benefit",
+                "name": "NPS Benefits Calculator",
+                "description": "Calculates NPS benefits and annuity. Use for: NPS questions, pension calculations, Tier I/II accounts.",
+                "uc_function": "super_advisory_demo.pension_calculators.in_calculate_nps",
+                "authority": "Pension Fund Regulatory Authority",
+                "citation_ids": ["IN-PFRDA-001"]
+            },
+            {
+                "id": "projection",
+                "name": "EPF/NPS Projection Engine",
+                "description": "Projects EPF/NPS growth to retirement. Use for: retirement planning, corpus projections, retirement age.",
+                "uc_function": "super_advisory_demo.pension_calculators.in_project_retirement",
+                "authority": "EPFO / PFRDA",
+                "citation_ids": ["IN-EPFO-001"]
+            }
+        ]
+    }
+    
+    return metadata_by_country.get(country, metadata_by_country["Australia"])
+
+
+# ============================================================================
+# ✅ NEW: INDIVIDUAL TOOL CALLING FUNCTIONS
+# ============================================================================
+
+def call_individual_tool(tool_id, member_id, withdrawal_amount, country, warehouse_id):
+    """
+    Call a single UC function tool
+    
+    Args:
+        tool_id: "tax", "benefit", or "projection"
         member_id: Member identifier
-        withdrawal_amount: Proposed withdrawal in AUD
+        withdrawal_amount: Withdrawal amount
+        country: Country name
         warehouse_id: SQL Warehouse ID
     
     Returns:
-        dict with calculations, citations, and metadata
+        dict with calculation result, duration, and metadata
     """
     
-    overall_start = time.time()
-    
-    # Step 1: Fetch member profile
+    # Get member profile
     profile = get_member_profile(member_id, warehouse_id)
     
     if not profile:
-        return {
-            "error": "Member not found",
-            "country": "Australia",
-            "member_id": member_id
-        }
-    
-    tools_called = []
-    
-    # Step 2: Call UC Function - ATO Tax Calculator
-    tax_start = time.time()
-    tax_query = f"""
-        SELECT super_advisory_demo.pension_calculators.au_calculate_tax(
-            '{member_id}',
-            {profile['age']},
-            {profile['preservation_age']},
-            {profile['super_balance']},
-            {withdrawal_amount}
-        ) as result
-    """
-    
-    tax_result_raw = execute_query(warehouse_id, tax_query)
-    tax_duration = time.time() - tax_start
-    
-    if tax_result_raw and len(tax_result_raw) > 0:
-        tax_result = tax_result_raw[0][0]
-        
-        tools_called.append({
-            "name": "ATO Tax Calculator",
-            "authority": "Australian Taxation Office",
-            "uc_function": "super_advisory_demo.pension_calculators.au_calculate_tax",
-            "status": "completed",
-            "duration": round(tax_duration, 2)
-        })
-    else:
-        tax_result = None
-    
-    # Step 3: Call UC Function - Centrelink Age Pension
-    pension_start = time.time()
-    pension_query = f"""
-        SELECT super_advisory_demo.pension_calculators.au_check_pension_impact(
-            '{member_id}',
-            {profile['age']},
-            '{profile['marital_status']}',
-            {profile['super_balance']},
-            {profile['other_assets']},
-            {withdrawal_amount}
-        ) as result
-    """
-    
-    pension_result_raw = execute_query(warehouse_id, pension_query)
-    pension_duration = time.time() - pension_start
-    
-    if pension_result_raw and len(pension_result_raw) > 0:
-        pension_result = pension_result_raw[0][0]
-        
-        tools_called.append({
-            "name": "Centrelink Age Pension Calculator",
-            "authority": "Department of Social Services",
-            "uc_function": "super_advisory_demo.pension_calculators.au_check_pension_impact",
-            "status": "completed",
-            "duration": round(pension_duration, 2)
-        })
-    else:
-        pension_result = None
-    
-    # Step 4: Call UC Function - Retirement Projection
-    projection_start = time.time()
-    projection_query = f"""
-        SELECT super_advisory_demo.pension_calculators.au_project_balance(
-            '{member_id}',
-            {profile['age']},
-            {profile['preservation_age']},
-            {profile['super_balance']},
-            20
-        ) as result
-    """
-    
-    projection_result_raw = execute_query(warehouse_id, projection_query)
-    projection_duration = time.time() - projection_start
-    
-    if projection_result_raw and len(projection_result_raw) > 0:
-        projection_result = projection_result_raw[0][0]
-        
-        tools_called.append({
-            "name": "Superannuation Projection Engine",
-            "authority": "ASFA / APRA",
-            "uc_function": "super_advisory_demo.pension_calculators.au_project_balance",
-            "status": "completed",
-            "duration": round(projection_duration, 2)
-        })
-    else:
-        projection_result = None
-    
-    # Step 5: Fetch authoritative citations
-    citations = get_citations(['AU-TAX-001', 'AU-PENSION-001', 'AU-STANDARD-001'], warehouse_id)
-    
-    total_duration = time.time() - overall_start
-    
-    # Step 6: Build enriched response
-    return {
-        "country": "Australia",
-        "member_id": member_id,
-        "member_name": profile['name'],
-        "member_age": profile['age'],
-        "withdrawal_amount": withdrawal_amount,
-        
-        # Tax calculation results
-        "tax_calculation": tax_result,
-        
-        # Pension impact results
-        "pension_impact": pension_result,
-        
-        # Projection results
-        "retirement_projection": projection_result,
-        
-        # Citations (never made up!)
-        "citations": citations,
-        
-        # Metadata for progress tracking
-        "tools_called": tools_called,
-        "data_source": "super_advisory_demo.member_data.member_profiles",
-        "citation_source": "super_advisory_demo.member_data.citation_registry",
-        "total_duration": round(total_duration, 2)
-    }
-
-
-# ============================================================================
-# USA CALCULATORS (3 functions)
-# ============================================================================
-
-def calculate_401k_usa(member_id, withdrawal_amount, warehouse_id):
-    """
-    USA 401(k) Calculator - Calls 3 UC Functions
-    
-    Functions called:
-    1. us_calculate_401k_tax - 401(k)/IRA tax with penalties
-    2. us_check_social_security - Social Security benefits
-    3. us_project_retirement_balance - Balance projection with RMD
-    
-    Args:
-        member_id: Member identifier
-        withdrawal_amount: Proposed withdrawal in USD
-        warehouse_id: SQL Warehouse ID
-    
-    Returns:
-        dict with calculations, citations, and metadata
-    """
-    
-    overall_start = time.time()
-    
-    # Fetch member profile
-    profile = get_member_profile(member_id, warehouse_id)
-    
-    if not profile:
-        return {
-            "error": "Member not found",
-            "country": "USA",
-            "member_id": member_id
-        }
-    
-    tools_called = []
-    
-    # Function 1: 401(k) Tax Calculator
-    tax_start = time.time()
-    # Assume 401k as default account type - could be parameter
-    tax_query = f"""
-        SELECT super_advisory_demo.pension_calculators.us_calculate_401k_tax(
-            '{member_id}',
-            {profile['age']},
-            {profile['super_balance']},
-            {withdrawal_amount},
-            '401k'
-        ) as result
-    """
-    
-    tax_result_raw = execute_query(warehouse_id, tax_query)
-    tax_duration = time.time() - tax_start
-    
-    if tax_result_raw and len(tax_result_raw) > 0:
-        tax_result = tax_result_raw[0][0]
-        tools_called.append({
-            "name": "401(k) Tax Calculator",
-            "authority": "Internal Revenue Service",
-            "uc_function": "super_advisory_demo.pension_calculators.us_calculate_401k_tax",
-            "status": "completed",
-            "duration": round(tax_duration, 2)
-        })
-    else:
-        tax_result = None
-    
-    # Function 2: Social Security Calculator
-    ss_start = time.time()
-    # Assume average monthly earnings of $3000 and claiming at 67
-    ss_query = f"""
-        SELECT super_advisory_demo.pension_calculators.us_check_social_security(
-            '{member_id}',
-            {profile['age']},
-            3000.0,
-            67,
-            {profile['super_balance'] * 0.04}
-        ) as result
-    """
-    
-    ss_result_raw = execute_query(warehouse_id, ss_query)
-    ss_duration = time.time() - ss_start
-    
-    if ss_result_raw and len(ss_result_raw) > 0:
-        ss_result = ss_result_raw[0][0]
-        tools_called.append({
-            "name": "Social Security Calculator",
-            "authority": "Social Security Administration",
-            "uc_function": "super_advisory_demo.pension_calculators.us_check_social_security",
-            "status": "completed",
-            "duration": round(ss_duration, 2)
-        })
-    else:
-        ss_result = None
-    
-    # Function 3: Retirement Balance Projection
-    proj_start = time.time()
-    proj_query = f"""
-        SELECT super_advisory_demo.pension_calculators.us_project_retirement_balance(
-            '{member_id}',
-            {profile['age']},
-            {profile['super_balance']},
-            0,
-            65,
-            20
-        ) as result
-    """
-    
-    proj_result_raw = execute_query(warehouse_id, proj_query)
-    proj_duration = time.time() - proj_start
-    
-    if proj_result_raw and len(proj_result_raw) > 0:
-        proj_result = proj_result_raw[0][0]
-        tools_called.append({
-            "name": "Retirement Balance Projection",
-            "authority": "IRS (SECURE 2.0 Act)",
-            "uc_function": "super_advisory_demo.pension_calculators.us_project_retirement_balance",
-            "status": "completed",
-            "duration": round(proj_duration, 2)
-        })
-    else:
-        proj_result = None
-    
-    # Fetch citations
-    citations = get_citations(['US-TAX-001', 'US-PENALTY-001', 'US-SS-001', 'US-RMD-001'], warehouse_id)
-    
-    return {
-        "country": "USA",
-        "member_id": member_id,
-        "member_name": profile['name'],
-        "member_age": profile['age'],
-        "withdrawal_amount": withdrawal_amount,
-        "tax_calculation": tax_result,
-        "social_security": ss_result,
-        "retirement_projection": proj_result,
-        "citations": citations,
-        "tools_called": tools_called,
-        "data_source": "super_advisory_demo.member_data.member_profiles",
-        "total_duration": round(time.time() - overall_start, 2)
-    }
-
-
-# ============================================================================
-# UK CALCULATORS (3 functions)
-# ============================================================================
-
-def calculate_uk_pension(member_id, withdrawal_amount, warehouse_id):
-    """
-    UK Pension Calculator - Calls 3 UC Functions
-    
-    Functions called:
-    1. uk_calculate_pension_tax - Pension tax with 25% tax-free
-    2. uk_check_state_pension - State Pension eligibility
-    3. uk_project_pension_balance - Drawdown projection
-    
-    Args:
-        member_id: Member identifier
-        withdrawal_amount: Proposed withdrawal in GBP
-        warehouse_id: SQL Warehouse ID
-    
-    Returns:
-        dict with calculations, citations, and metadata
-    """
-    
-    overall_start = time.time()
-    
-    # Fetch member profile
-    profile = get_member_profile(member_id, warehouse_id)
-    
-    if not profile:
-        return {
-            "error": "Member not found",
-            "country": "United Kingdom",
-            "member_id": member_id
-        }
-    
-    tools_called = []
-    
-    # Function 1: Pension Tax Calculator
-    tax_start = time.time()
-    # Assume Lump_Sum as default withdrawal type
-    tax_query = f"""
-        SELECT super_advisory_demo.pension_calculators.uk_calculate_pension_tax(
-            '{member_id}',
-            {profile['age']},
-            {profile['super_balance']},
-            {withdrawal_amount},
-            'Lump_Sum'
-        ) as result
-    """
-    
-    tax_result_raw = execute_query(warehouse_id, tax_query)
-    tax_duration = time.time() - tax_start
-    
-    if tax_result_raw and len(tax_result_raw) > 0:
-        tax_result = tax_result_raw[0][0]
-        tools_called.append({
-            "name": "UK Pension Tax Calculator",
-            "authority": "HM Revenue & Customs",
-            "uc_function": "super_advisory_demo.pension_calculators.uk_calculate_pension_tax",
-            "status": "completed",
-            "duration": round(tax_duration, 2)
-        })
-    else:
-        tax_result = None
-    
-    # Function 2: State Pension Calculator
-    sp_start = time.time()
-    # Assume 35 NI qualifying years for full pension
-    sp_query = f"""
-        SELECT super_advisory_demo.pension_calculators.uk_check_state_pension(
-            '{member_id}',
-            {profile['age']},
-            35,
-            {profile['super_balance'] * 0.04}
-        ) as result
-    """
-    
-    sp_result_raw = execute_query(warehouse_id, sp_query)
-    sp_duration = time.time() - sp_start
-    
-    if sp_result_raw and len(sp_result_raw) > 0:
-        sp_result = sp_result_raw[0][0]
-        tools_called.append({
-            "name": "State Pension Calculator",
-            "authority": "Department for Work and Pensions",
-            "uc_function": "super_advisory_demo.pension_calculators.uk_check_state_pension",
-            "status": "completed",
-            "duration": round(sp_duration, 2)
-        })
-    else:
-        sp_result = None
-    
-    # Function 3: Pension Drawdown Projection
-    proj_start = time.time()
-    # Assume 4% annual drawdown
-    annual_drawdown = profile['super_balance'] * 0.04
-    proj_query = f"""
-        SELECT super_advisory_demo.pension_calculators.uk_project_pension_balance(
-            '{member_id}',
-            {profile['age']},
-            {profile['super_balance']},
-            {annual_drawdown},
-            20
-        ) as result
-    """
-    
-    proj_result_raw = execute_query(warehouse_id, proj_query)
-    proj_duration = time.time() - proj_start
-    
-    if proj_result_raw and len(proj_result_raw) > 0:
-        proj_result = proj_result_raw[0][0]
-        tools_called.append({
-            "name": "Pension Drawdown Projection",
-            "authority": "Financial Conduct Authority",
-            "uc_function": "super_advisory_demo.pension_calculators.uk_project_pension_balance",
-            "status": "completed",
-            "duration": round(proj_duration, 2)
-        })
-    else:
-        proj_result = None
-    
-    # Fetch citations
-    citations = get_citations(['UK-TAX-001', 'UK-PENSION-001', 'UK-AGE-001', 'UK-DRAWDOWN-001'], warehouse_id)
-    
-    return {
-        "country": "United Kingdom",
-        "member_id": member_id,
-        "member_name": profile['name'],
-        "member_age": profile['age'],
-        "withdrawal_amount": withdrawal_amount,
-        "tax_calculation": tax_result,
-        "state_pension": sp_result,
-        "drawdown_projection": proj_result,
-        "citations": citations,
-        "tools_called": tools_called,
-        "data_source": "super_advisory_demo.member_data.member_profiles",
-        "total_duration": round(time.time() - overall_start, 2)
-    }
-
-
-# ============================================================================
-# INDIA CALCULATORS (3 functions)
-# ============================================================================
-
-def calculate_india_epf(member_id, withdrawal_amount, warehouse_id):
-    """
-    India EPF Calculator - Calls 3 UC Functions
-    
-    Functions called:
-    1. in_calculate_epf_tax - EPF tax with 5-year exemption
-    2. in_calculate_nps_benefits - NPS lump sum and annuity
-    3. in_project_retirement_corpus - EPF + NPS projection
-    
-    Args:
-        member_id: Member identifier
-        withdrawal_amount: Proposed withdrawal in INR
-        warehouse_id: SQL Warehouse ID
-    
-    Returns:
-        dict with calculations, citations, and metadata
-    """
-    
-    overall_start = time.time()
-    
-    # Fetch member profile
-    profile = get_member_profile(member_id, warehouse_id)
-    
-    if not profile:
-        return {
-            "error": "Member not found",
-            "country": "India",
-            "member_id": member_id
-        }
-    
-    tools_called = []
-    
-    # Function 1: EPF Tax Calculator
-    tax_start = time.time()
-    # Assume 8 years of service and Full withdrawal
-    tax_query = f"""
-        SELECT super_advisory_demo.pension_calculators.in_calculate_epf_tax(
-            '{member_id}',
-            {profile['age']},
-            8,
-            {profile['super_balance']},
-            {withdrawal_amount},
-            'Full'
-        ) as result
-    """
-    
-    tax_result_raw = execute_query(warehouse_id, tax_query)
-    tax_duration = time.time() - tax_start
-    
-    if tax_result_raw and len(tax_result_raw) > 0:
-        tax_result = tax_result_raw[0][0]
-        tools_called.append({
-            "name": "EPF Tax Calculator",
-            "authority": "Employees Provident Fund Organisation",
-            "uc_function": "super_advisory_demo.pension_calculators.in_calculate_epf_tax",
-            "status": "completed",
-            "duration": round(tax_duration, 2)
-        })
-    else:
-        tax_result = None
-    
-    # Function 2: NPS Benefits Calculator
-    nps_start = time.time()
-    # Assume member has NPS corpus equal to 50% of EPF
-    nps_corpus = profile['super_balance'] * 0.5
-    nps_query = f"""
-        SELECT super_advisory_demo.pension_calculators.in_calculate_nps_benefits(
-            '{member_id}',
-            {profile['age']},
-            {nps_corpus},
-            40.0,
-            7.5
-        ) as result
-    """
-    
-    nps_result_raw = execute_query(warehouse_id, nps_query)
-    nps_duration = time.time() - nps_start
-    
-    if nps_result_raw and len(nps_result_raw) > 0:
-        nps_result = nps_result_raw[0][0]
-        tools_called.append({
-            "name": "NPS Benefits Calculator",
-            "authority": "Pension Fund Regulatory Authority",
-            "uc_function": "super_advisory_demo.pension_calculators.in_calculate_nps_benefits",
-            "status": "completed",
-            "duration": round(nps_duration, 2)
-        })
-    else:
-        nps_result = None
-    
-    # Function 3: Retirement Corpus Projection
-    proj_start = time.time()
-    proj_query = f"""
-        SELECT super_advisory_demo.pension_calculators.in_project_retirement_corpus(
-            '{member_id}',
-            {profile['age']},
-            {profile['super_balance']},
-            {profile['super_balance'] * 0.5},
-            5000,
-            3000,
-            60,
-            20
-        ) as result
-    """
-    
-    proj_result_raw = execute_query(warehouse_id, proj_query)
-    proj_duration = time.time() - proj_start
-    
-    if proj_result_raw and len(proj_result_raw) > 0:
-        proj_result = proj_result_raw[0][0]
-        tools_called.append({
-            "name": "Retirement Corpus Projection",
-            "authority": "EPFO & PFRDA",
-            "uc_function": "super_advisory_demo.pension_calculators.in_project_retirement_corpus",
-            "status": "completed",
-            "duration": round(proj_duration, 2)
-        })
-    else:
-        proj_result = None
-    
-    # Fetch citations
-    citations = get_citations(['IN-EPF-001', 'IN-TAX-001', 'IN-NPS-001', 'IN-INTEREST-001'], warehouse_id)
-    
-    return {
-        "country": "India",
-        "member_id": member_id,
-        "member_name": profile['name'],
-        "member_age": profile['age'],
-        "withdrawal_amount": withdrawal_amount,
-        "epf_tax_calculation": tax_result,
-        "nps_benefits": nps_result,
-        "retirement_projection": proj_result,
-        "citations": citations,
-        "tools_called": tools_called,
-        "data_source": "super_advisory_demo.member_data.member_profiles",
-        "total_duration": round(time.time() - overall_start, 2)
-    }
-
-
-# ============================================================================
-# ROUTER FUNCTION
-# ============================================================================
-
-def get_pension_calculator(country):
-    """
-    Get the appropriate calculator function for a country
-    
-    Args:
-        country: Country name (Australia, USA, United Kingdom, India)
-    
-    Returns:
-        Calculator function
-    """
-    calculators = {
-        "Australia": calculate_super_australia,
-        "USA": calculate_401k_usa,
-        "United Kingdom": calculate_uk_pension,
-        "India": calculate_india_epf
+        return {"error": "Member not found"}
+    
+    # Route to country-specific function
+    country_functions = {
+        "Australia": _call_australia_tool,
+        "USA": _call_usa_tool,
+        "United Kingdom": _call_uk_tool,
+        "India": _call_india_tool
     }
     
-    return calculators.get(country, calculate_super_australia)
+    func = country_functions.get(country)
+    if not func:
+        return {"error": f"Country {country} not supported"}
+    
+    return func(tool_id, member_id, profile, withdrawal_amount, warehouse_id)
 
 
 # ============================================================================
-# CONVENIENCE FUNCTION FOR AGENT
+# AUSTRALIA INDIVIDUAL TOOLS
+# ============================================================================
+
+def _call_australia_tool(tool_id, member_id, profile, withdrawal_amount, warehouse_id):
+    """Call individual Australia UC function"""
+    
+    start_time = time.time()
+    
+    if tool_id == "tax":
+        # ATO Tax Calculator
+        query = f"""
+            SELECT super_advisory_demo.pension_calculators.au_calculate_tax(
+                '{member_id}',
+                {profile['age']},
+                {profile['preservation_age']},
+                {profile['super_balance']},
+                {withdrawal_amount}
+            ) as result
+        """
+        
+        result_raw = execute_query(warehouse_id, query)
+        duration = time.time() - start_time
+        
+        if result_raw and len(result_raw) > 0:
+            return {
+                "tool_name": "ATO Tax Calculator",
+                "tool_id": "tax",
+                "uc_function": "super_advisory_demo.pension_calculators.au_calculate_tax",
+                "authority": "Australian Taxation Office",
+                "calculation": result_raw[0][0],
+                "citations": get_citations(['AU-TAX-001'], warehouse_id),
+                "duration": round(duration, 2)
+            }
+    
+    elif tool_id == "benefit":
+        # Centrelink Age Pension
+        query = f"""
+            SELECT super_advisory_demo.pension_calculators.au_check_pension_impact(
+                '{member_id}',
+                {profile['age']},
+                '{profile['marital_status']}',
+                {profile['super_balance']},
+                {profile['other_assets']},
+                {withdrawal_amount}
+            ) as result
+        """
+        
+        result_raw = execute_query(warehouse_id, query)
+        duration = time.time() - start_time
+        
+        if result_raw and len(result_raw) > 0:
+            return {
+                "tool_name": "Centrelink Age Pension Calculator",
+                "tool_id": "benefit",
+                "uc_function": "super_advisory_demo.pension_calculators.au_check_pension_impact",
+                "authority": "Department of Social Services",
+                "calculation": result_raw[0][0],
+                "citations": get_citations(['AU-PENSION-001'], warehouse_id),
+                "duration": round(duration, 2)
+            }
+    
+    elif tool_id == "projection":
+        # Retirement Projection
+        query = f"""
+            SELECT super_advisory_demo.pension_calculators.au_project_balance(
+                '{member_id}',
+                {profile['age']},
+                {profile['preservation_age']},
+                {profile['super_balance']},
+                20
+            ) as result
+        """
+        
+        result_raw = execute_query(warehouse_id, query)
+        duration = time.time() - start_time
+        
+        if result_raw and len(result_raw) > 0:
+            return {
+                "tool_name": "Superannuation Projection Engine",
+                "tool_id": "projection",
+                "uc_function": "super_advisory_demo.pension_calculators.au_project_balance",
+                "authority": "ASFA / APRA",
+                "calculation": result_raw[0][0],
+                "citations": get_citations(['AU-STANDARD-001'], warehouse_id),
+                "duration": round(duration, 2)
+            }
+    
+    return {"error": f"Unknown tool_id: {tool_id}"}
+# tools_INTELLIGENT_part2.py - USA, UK, India individual tools
+# This is part 2 - append to part 1
+
+# ============================================================================
+# USA INDIVIDUAL TOOLS
+# ============================================================================
+
+def _call_usa_tool(tool_id, member_id, profile, withdrawal_amount, warehouse_id):
+    """Call individual USA UC function"""
+    
+    start_time = time.time()
+    
+    if tool_id == "tax":
+        # IRS 401(k) Tax
+        query = f"""
+            SELECT super_advisory_demo.pension_calculators.us_calculate_tax(
+                '{member_id}',
+                {profile['age']},
+                {profile['super_balance']},
+                {withdrawal_amount}
+            ) as result
+        """
+        
+        result_raw = execute_query(warehouse_id, query)
+        duration = time.time() - start_time
+        
+        if result_raw and len(result_raw) > 0:
+            return {
+                "tool_name": "IRS 401(k) Tax Calculator",
+                "tool_id": "tax",
+                "uc_function": "super_advisory_demo.pension_calculators.us_calculate_tax",
+                "authority": "Internal Revenue Service",
+                "calculation": result_raw[0][0],
+                "citations": get_citations(['US-TAX-001'], warehouse_id),
+                "duration": round(duration, 2)
+            }
+    
+    elif tool_id == "benefit":
+        # Social Security
+        query = f"""
+            SELECT super_advisory_demo.pension_calculators.us_check_social_security(
+                '{member_id}',
+                {profile['age']},
+                '{profile['marital_status']}',
+                {profile['super_balance']}
+            ) as result
+        """
+        
+        result_raw = execute_query(warehouse_id, query)
+        duration = time.time() - start_time
+        
+        if result_raw and len(result_raw) > 0:
+            return {
+                "tool_name": "Social Security Benefits Calculator",
+                "tool_id": "benefit",
+                "uc_function": "super_advisory_demo.pension_calculators.us_check_social_security",
+                "authority": "Social Security Administration",
+                "calculation": result_raw[0][0],
+                "citations": get_citations(['US-SSA-001'], warehouse_id),
+                "duration": round(duration, 2)
+            }
+    
+    elif tool_id == "projection":
+        # 401(k) Projection
+        query = f"""
+            SELECT super_advisory_demo.pension_calculators.us_project_401k(
+                '{member_id}',
+                {profile['age']},
+                {profile['super_balance']},
+                20
+            ) as result
+        """
+        
+        result_raw = execute_query(warehouse_id, query)
+        duration = time.time() - start_time
+        
+        if result_raw and len(result_raw) > 0:
+            return {
+                "tool_name": "401(k) Projection Engine",
+                "tool_id": "projection",
+                "uc_function": "super_advisory_demo.pension_calculators.us_project_401k",
+                "authority": "Department of Labor / IRS",
+                "calculation": result_raw[0][0],
+                "citations": get_citations(['US-DOL-001'], warehouse_id),
+                "duration": round(duration, 2)
+            }
+    
+    return {"error": f"Unknown tool_id: {tool_id}"}
+
+
+# ============================================================================
+# UK INDIVIDUAL TOOLS
+# ============================================================================
+
+def _call_uk_tool(tool_id, member_id, profile, withdrawal_amount, warehouse_id):
+    """Call individual UK UC function"""
+    
+    start_time = time.time()
+    
+    if tool_id == "tax":
+        # HMRC Tax
+        query = f"""
+            SELECT super_advisory_demo.pension_calculators.uk_calculate_tax(
+                '{member_id}',
+                {profile['age']},
+                {profile['super_balance']},
+                {withdrawal_amount}
+            ) as result
+        """
+        
+        result_raw = execute_query(warehouse_id, query)
+        duration = time.time() - start_time
+        
+        if result_raw and len(result_raw) > 0:
+            return {
+                "tool_name": "HMRC Pension Tax Calculator",
+                "tool_id": "tax",
+                "uc_function": "super_advisory_demo.pension_calculators.uk_calculate_tax",
+                "authority": "HM Revenue & Customs",
+                "calculation": result_raw[0][0],
+                "citations": get_citations(['UK-TAX-001'], warehouse_id),
+                "duration": round(duration, 2)
+            }
+    
+    elif tool_id == "benefit":
+        # State Pension
+        query = f"""
+            SELECT super_advisory_demo.pension_calculators.uk_check_state_pension(
+                '{member_id}',
+                {profile['age']},
+                '{profile['marital_status']}',
+                {profile['super_balance']}
+            ) as result
+        """
+        
+        result_raw = execute_query(warehouse_id, query)
+        duration = time.time() - start_time
+        
+        if result_raw and len(result_raw) > 0:
+            return {
+                "tool_name": "State Pension Calculator",
+                "tool_id": "benefit",
+                "uc_function": "super_advisory_demo.pension_calculators.uk_check_state_pension",
+                "authority": "Department for Work and Pensions",
+                "calculation": result_raw[0][0],
+                "citations": get_citations(['UK-DWP-001'], warehouse_id),
+                "duration": round(duration, 2)
+            }
+    
+    elif tool_id == "projection":
+        # Pension Projection
+        query = f"""
+            SELECT super_advisory_demo.pension_calculators.uk_project_pension(
+                '{member_id}',
+                {profile['age']},
+                {profile['super_balance']},
+                20
+            ) as result
+        """
+        
+        result_raw = execute_query(warehouse_id, query)
+        duration = time.time() - start_time
+        
+        if result_raw and len(result_raw) > 0:
+            return {
+                "tool_name": "UK Pension Projection Engine",
+                "tool_id": "projection",
+                "uc_function": "super_advisory_demo.pension_calculators.uk_project_pension",
+                "authority": "Pensions Regulator / FCA",
+                "calculation": result_raw[0][0],
+                "citations": get_citations(['UK-TPR-001'], warehouse_id),
+                "duration": round(duration, 2)
+            }
+    
+    return {"error": f"Unknown tool_id: {tool_id}"}
+
+
+# ============================================================================
+# INDIA INDIVIDUAL TOOLS
+# ============================================================================
+
+def _call_india_tool(tool_id, member_id, profile, withdrawal_amount, warehouse_id):
+    """Call individual India UC function"""
+    
+    start_time = time.time()
+    
+    if tool_id == "tax":
+        # EPF Tax
+        query = f"""
+            SELECT super_advisory_demo.pension_calculators.in_calculate_epf_tax(
+                '{member_id}',
+                {profile['age']},
+                {profile['super_balance']},
+                {withdrawal_amount}
+            ) as result
+        """
+        
+        result_raw = execute_query(warehouse_id, query)
+        duration = time.time() - start_time
+        
+        if result_raw and len(result_raw) > 0:
+            return {
+                "tool_name": "EPF Tax Calculator",
+                "tool_id": "tax",
+                "uc_function": "super_advisory_demo.pension_calculators.in_calculate_epf_tax",
+                "authority": "Income Tax Department",
+                "calculation": result_raw[0][0],
+                "citations": get_citations(['IN-TAX-001'], warehouse_id),
+                "duration": round(duration, 2)
+            }
+    
+    elif tool_id == "benefit":
+        # NPS Benefits
+        query = f"""
+            SELECT super_advisory_demo.pension_calculators.in_calculate_nps(
+                '{member_id}',
+                {profile['age']},
+                {profile['super_balance']}
+            ) as result
+        """
+        
+        result_raw = execute_query(warehouse_id, query)
+        duration = time.time() - start_time
+        
+        if result_raw and len(result_raw) > 0:
+            return {
+                "tool_name": "NPS Benefits Calculator",
+                "tool_id": "benefit",
+                "uc_function": "super_advisory_demo.pension_calculators.in_calculate_nps",
+                "authority": "Pension Fund Regulatory Authority",
+                "calculation": result_raw[0][0],
+                "citations": get_citations(['IN-PFRDA-001'], warehouse_id),
+                "duration": round(duration, 2)
+            }
+    
+    elif tool_id == "projection":
+        # Retirement Projection
+        query = f"""
+            SELECT super_advisory_demo.pension_calculators.in_project_retirement(
+                '{member_id}',
+                {profile['age']},
+                {profile['super_balance']},
+                20
+            ) as result
+        """
+        
+        result_raw = execute_query(warehouse_id, query)
+        duration = time.time() - start_time
+        
+        if result_raw and len(result_raw) > 0:
+            return {
+                "tool_name": "EPF/NPS Projection Engine",
+                "tool_id": "projection",
+                "uc_function": "super_advisory_demo.pension_calculators.in_project_retirement",
+                "authority": "EPFO / PFRDA",
+                "calculation": result_raw[0][0],
+                "citations": get_citations(['IN-EPFO-001'], warehouse_id),
+                "duration": round(duration, 2)
+            }
+    
+    return {"error": f"Unknown tool_id: {tool_id}"}
+
+
+# ============================================================================
+# ✅ BACKWARD COMPATIBILITY: Full calculator functions (if needed)
 # ============================================================================
 
 def calculate_retirement_advice(member_id, withdrawal_amount, country, warehouse_id=None):
     """
-    Main entry point for retirement advice calculation
+    Backward compatible function - calls all 3 tools
+    
+    Use call_individual_tool() for intelligent selection instead
     
     Args:
         member_id: Member identifier
         withdrawal_amount: Proposed withdrawal amount
-        country: Country name (Australia, USA, United Kingdom, India)
-        warehouse_id: Optional SQL Warehouse ID (uses config default if not provided)
+        country: Country name
+        warehouse_id: Optional SQL Warehouse ID
     
     Returns:
-        dict with calculations, citations, and metadata for all 3 functions
+        dict with all 3 calculations
     """
     
     if warehouse_id is None:
         warehouse_id = SQL_WAREHOUSE_ID
     
-    # Get the appropriate calculator for the country
-    calculator = get_pension_calculator(country)
+    # Call all 3 tools
+    results = {}
+    tools_called = []
+    all_citations = []
     
-    # Call the calculator
-    result = calculator(member_id, withdrawal_amount, warehouse_id)
+    for tool_id in ["tax", "benefit", "projection"]:
+        result = call_individual_tool(
+            tool_id=tool_id,
+            member_id=member_id,
+            withdrawal_amount=withdrawal_amount,
+            country=country,
+            warehouse_id=warehouse_id
+        )
+        
+        if result and "error" not in result:
+            results[tool_id] = result["calculation"]
+            tools_called.append({
+                "name": result["tool_name"],
+                "authority": result.get("authority", ""),
+                "uc_function": result["uc_function"],
+                "status": "completed",
+                "duration": result["duration"]
+            })
+            if "citations" in result:
+                all_citations.extend(result["citations"])
     
-    return result
+    return {
+        "country": country,
+        "member_id": member_id,
+        "calculations": results,
+        "tools_called": tools_called,
+        "citations": all_citations
+    }
+
+
+# ============================================================================
+# ROUTER FUNCTION (backward compatibility)
+# ============================================================================
+
+def get_pension_calculator(country):
+    """
+    Backward compatibility - returns function that calls all 3 tools
+    
+    For new intelligent approach, use call_individual_tool() instead
+    """
+    def full_calculator(member_id, withdrawal_amount, warehouse_id):
+        return calculate_retirement_advice(member_id, withdrawal_amount, country, warehouse_id)
+    
+    return full_calculator
