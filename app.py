@@ -1,9 +1,10 @@
-# app.py - COMPLETE FIXED VERSION
+# app.py - COMPLETE FIXED VERSION WITH WIDE TABS
 """
 Multi-Country Retirement Advisory Application
 ✅ FIXED: ValueError on cost metric
 ✅ FIXED: Australia filter
 ✅ ADDED: 3 sleek tabs (Governance | Audit | Developer)
+✅ ADDED: Wide tabs CSS for better UX
 ✅ IMPROVED: Better UX throughout
 """
 
@@ -42,8 +43,11 @@ COUNTRIES = ["Australia", "USA", "United Kingdom", "India"]
 st.set_page_config(
     page_title="Global Retirement Advisory",
     page_icon="🏦",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-# ✅ WIDE TABS CSS - Makes tabs fill horizontal space
+# ✅ WIDE TABS CSS - Makes tabs fill horizontal space and look sleeker
 st.markdown("""
 <style>
     /* Make tabs fill full width and look sleeker */
@@ -81,10 +85,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
-
 # Initialize session state
 if "page" not in st.session_state:
     st.session_state.page = "Advisory"
@@ -119,542 +119,310 @@ page = st.sidebar.radio(
     key="page_nav"
 )
 
-st.sidebar.markdown("---")
-
-st.session_state.show_logs = st.sidebar.checkbox(
-    "👀 Show Processing Logs",
-    value=st.session_state.show_logs,
-    key="log_toggle"
-)
-
-st.sidebar.markdown("---")
-st.sidebar.caption(f"Session: {st.session_state.session_id[:8]}...")
-st.sidebar.caption(f"User: {st.session_state.user_id}")
-
 st.session_state.page = page
 
-# Validation mode selector
-st.sidebar.markdown("---")
-st.sidebar.subheader("⚖️ Validation Mode")
-
-if "validation_mode" not in st.session_state:
-    st.session_state.validation_mode = "llm_judge"
-
-mode_options = {
-    "🎯 LLM Judge Only": "llm_judge",
-    "⚡ Hybrid (Fast + Smart)": "hybrid", 
-    "🚀 Deterministic Only": "deterministic"
-}
-
-selected = st.sidebar.radio(
-    "Choose strategy:",
-    options=list(mode_options.keys()),
-    index=0
-)
-
-st.session_state.validation_mode = mode_options[selected]
-
 # ============================================================================
-# PAGE 1: ADVISORY INTERFACE
+# ADVISORY PAGE
 # ============================================================================
 
 if page == "Advisory":
     render_logo()
-
-    st.subheader("🌍 Select Country")
-
-    country_options = {
-        "🇦🇺 Australia": "Australia",
-        "🇺🇸 USA": "USA",
-        "🇬🇧 United Kingdom": "United Kingdom",
-        "🇮🇳 India": "India"
-    }
-
-    selected_country_with_flag = st.radio(
-        "Choose your country:",
-        options=list(country_options.keys()),
-        horizontal=True,
-        key="country_selector",
-        label_visibility="collapsed"
-    )
-
-    country_display = country_options[selected_country_with_flag]
-    st.session_state.country_display = country_display
-
-    country_code = COUNTRY_DISPLAY_TO_CODE[country_display]
-
     st.markdown("---")
-
-    prompt_text = COUNTRY_PROMPTS.get(country_display, COUNTRY_PROMPTS["Australia"])
-    disclaimer = COUNTRY_DISCLAIMERS.get(country_display, COUNTRY_DISCLAIMERS["Australia"])
-    render_country_welcome(country_display, prompt_text, disclaimer)
-
-    st.markdown("---")
-
-    # ========================================================================
-    # MEMBER SELECTION
-    # ========================================================================
-    st.subheader("📋 Select Member Profile")
-
-    # Load members ONCE per country
-    if st.session_state.current_country_code != country_code:
-        members_df = get_members_by_country(country_code)
-        st.session_state.members_list = members_df.to_dict('records') if not members_df.empty else []
-        st.session_state.current_country_code = country_code
-        st.session_state.selected_member = None
-
-    members = st.session_state.members_list
-
-    if not members:
-        st.warning(f"⚠️ No members found for {country_display}.")
-        st.info("Run SQL scripts to add members.")
-    else:
-        # Display in grid
-        cols = st.columns(min(3, len(members)))
-
-        for idx, member in enumerate(members):
-            with cols[idx % 3]:
-                member_id = member.get('member_id')
-                is_selected = (st.session_state.selected_member == member_id)
-
-                button_type = "primary" if is_selected else "secondary"
-                button_label = f"{'✓ ' if is_selected else ''}Select {member.get('name', 'Unknown')}"
-
-                if st.button(
-                    button_label,
-                    key=f"btn_{member_id}_{country_code}",
-                    use_container_width=True,
-                    type=button_type
-                ):
-                    st.session_state.selected_member = member_id
-                    st.rerun()
-
-                render_member_card(member, is_selected, country_display)
-
-        # Get selected member
-        if st.session_state.selected_member:
-            member = next(
-                (m for m in members if m.get('member_id') == st.session_state.selected_member),
-                members[0]
-            )
-        else:
-            member = members[0]
-            st.session_state.selected_member = member.get('member_id')
-
-        st.markdown("---")
-
-        # Query input
-        st.subheader("💬 Ask Your Question")
-
-        sample_questions = {
-            "Australia": [
-                "💰 What's the maximum amount I can withdraw from my superannuation this year?",
-                "🎂 At what age can I access my super without restrictions?",
-                "🏥 Can I access my super early for medical reasons or financial hardship?"
-            ],
-            "USA": [
-                "💵 How much can I safely withdraw from my 401(k) without facing penalties?",
-                "📅 What are the required minimum distributions (RMDs) for my age?",
-                "🎓 Can I withdraw from my 401(k) early for education or home purchase?"
-            ],
-            "United Kingdom": [
-                "💷 How much of my pension can I take as a tax-free lump sum?",
-                "✈️ Can I transfer my UK pension to another country if I move abroad?",
-                "⏰ What are my options for accessing my pension before state pension age?"
-            ],
-            "India": [
-                "💸 What percentage of my EPF can I withdraw before retirement?",
-                "🏠 Can I withdraw from my PF for buying a house or medical emergency?",
-                "📊 How is my Employees' Pension Scheme (EPS) calculated at retirement?"
-            ]
-        }
-
-        st.caption("💡 Try these sample questions:")
-        cols = st.columns(3)
-
-        for idx, q in enumerate(sample_questions.get(country_display, [])[:3]):
-            with cols[idx]:
-                if st.button(q, key=f"sample_q_{idx}", use_container_width=True):
-                    st.session_state.query_input = q
-
-        question = st.text_input(
-            "Your question:",
-            placeholder="Type your retirement/pension question here...",
-            key="query_input"
+    
+    # Country selection
+    col1, col2 = st.columns([1, 3])
+    
+    with col1:
+        st.subheader("🌍 Select Country")
+        country_display = st.selectbox(
+            "Country",
+            COUNTRIES,
+            key="country_select",
+            label_visibility="collapsed"
         )
-
-        # Get recommendation
-        if st.button("🚀 Get Recommendation", type="primary", use_container_width=True):
-            if not question:
-                st.warning("Please enter a question first.")
-            else:
-                with st.spinner("🔄 Processing your request..."):
-                    if not st.session_state.show_logs:
-                        progress_placeholder = st.empty()
-                        progress_placeholder.info("⏳ Processing your request. Estimated completion: 5-10 seconds.")
-
-                    try:
-                        answer, citations, response_dict, judge_resp, judge_verdict, error_info, tools_called = agent_query(
-                            user_id=st.session_state.user_id,
-                            country=country_display,
-                            query_str=question,
-                            extra_context=member,
-                            session_id=st.session_state.session_id,
-                            judge_llm_fn=None,
-                            mlflow_experiment_path=None,
-                            validation_mode=st.session_state.validation_mode
-                        )
-
-                        agent_output = {
-                            "answer": answer,
-                            "citations": citations,
-                            "response_dict": response_dict,
-                            "judge_response": judge_resp,
-                            "judge_verdict": judge_verdict,
-                            "error_info": error_info,
-                            "tools_called": tools_called,
-                            "tool_used": f"{country_display} Calculator"
-                        }
-
-                        st.session_state.agent_output = agent_output
-
-                        if not st.session_state.show_logs:
-                            progress_placeholder.empty()
-
-                    except Exception as e:
-                        st.error(f"An error occurred: {str(e)}")
-                        import traceback
-                        st.code(traceback.format_exc())
-                        st.session_state.agent_output = None
-                        if not st.session_state.show_logs:
-                            progress_placeholder.empty()
-
-        # Show logs if enabled
-        if st.session_state.show_logs:
-            member_data = member if st.session_state.agent_output else None
-            tools_called = st.session_state.agent_output.get("tools_called", []) if st.session_state.agent_output else []
-            render_progress(member_data, tools_called, True)
-
-        # Display results
-        if st.session_state.agent_output:
-            st.markdown("---")
-            st.subheader("📊 Recommendation")
-
-            st.success(st.session_state.agent_output["answer"])
-
-            render_postanswer_disclaimer(country_display)
-
-            st.markdown("#### 📚 Citations & References")
-            citations = st.session_state.agent_output.get("citations", [])
-            if citations:
-                for i, cite in enumerate(citations[:3], 1):
-                    st.caption(f"[{i}] {cite}")
-            else:
-                st.caption("No citations available.")
-
-            if st.session_state.agent_output.get("judge_verdict"):
-                with st.expander("🔍 Quality Validation Details"):
-                    verdict = st.session_state.agent_output["judge_verdict"]
+        st.session_state.country_display = country_display
+    
+    with col2:
+        render_country_welcome(country_display)
+    
+    st.markdown("---")
+    
+    # Load members when country changes
+    country_code = COUNTRY_DISPLAY_TO_CODE.get(country_display, "AU")
+    
+    if st.session_state.current_country_code != country_code:
+        st.session_state.current_country_code = country_code
+        st.session_state.members_list = get_members_by_country(country_code)
+        st.session_state.selected_member = None
+    
+    # Member selection
+    st.subheader("👤 Select Member")
+    
+    if not st.session_state.members_list:
+        st.warning(f"No members found for {country_display}")
+    else:
+        # Display members in grid
+        cols = st.columns(4)
+        for idx, member in enumerate(st.session_state.members_list):
+            with cols[idx % 4]:
+                is_selected = (st.session_state.selected_member == member['member_id'])
+                
+                if st.button(
+                    f"{'✅ ' if is_selected else ''}{member['name']}",
+                    key=f"member_{member['member_id']}",
+                    use_container_width=True
+                ):
+                    st.session_state.selected_member = member['member_id']
+                    st.rerun()
+                
+                # Show card
+                render_member_card(member, is_selected, country_display)
+    
+    st.markdown("---")
+    
+    # Query input and execution
+    if st.session_state.selected_member:
+        selected_member_data = next(
+            (m for m in st.session_state.members_list if m['member_id'] == st.session_state.selected_member),
+            None
+        )
+        
+        if selected_member_data:
+            st.subheader("💬 Ask a Question")
+            
+            # Show example questions
+            with st.expander("📝 Example Questions", expanded=False):
+                render_question_card(country_display)
+            
+            user_query = st.text_area(
+                "Your question:",
+                height=100,
+                placeholder=f"e.g., How much tax will I pay if I withdraw $50,000 from my retirement account?"
+            )
+            
+            col1, col2, col3 = st.columns([2, 2, 6])
+            
+            with col1:
+                validation_mode = st.selectbox(
+                    "Validation Mode",
+                    ["llm_judge", "hybrid", "deterministic"],
+                    index=0
+                )
+            
+            with col2:
+                if st.button("🚀 Get Recommendation", type="primary", use_container_width=True):
+                    if not user_query.strip():
+                        st.warning("Please enter a question")
+                    else:
+                        with st.spinner("Processing your query..."):
+                            try:
+                                # Call agent
+                                answer, citations, response_dict, judge_resp, judge_verdict, error_info, tools_called = agent_query(
+                                    user_id=st.session_state.user_id,
+                                    country=country_display,
+                                    query_str=user_query,
+                                    extra_context=selected_member_data,
+                                    session_id=st.session_state.session_id,
+                                    validation_mode=validation_mode
+                                )
+                                
+                                # Store output
+                                st.session_state.agent_output = {
+                                    "answer": answer,
+                                    "citations": citations,
+                                    "response_dict": response_dict,
+                                    "judge_response": judge_resp,
+                                    "judge_verdict": judge_verdict,
+                                    "error_info": error_info,
+                                    "tools_called": tools_called,
+                                    "member_name": selected_member_data['name']
+                                }
+                                
+                            except Exception as e:
+                                st.error(f"Error: {str(e)}")
+                                import traceback
+                                st.code(traceback.format_exc())
+            
+            # Display results
+            if st.session_state.agent_output:
+                output = st.session_state.agent_output
+                
+                st.markdown("---")
+                st.subheader("📋 Personalized Recommendation")
+                
+                # Show answer
+                st.markdown(output["answer"])
+                
+                # Show citations
+                if output.get("citations"):
+                    with st.expander("📚 Authoritative Citations", expanded=False):
+                        for idx, citation in enumerate(output["citations"], 1):
+                            if isinstance(citation, dict):
+                                st.markdown(f"**{idx}.** {citation.get('text', citation)}")
+                                if citation.get('url'):
+                                    st.markdown(f"   🔗 [{citation['url']}]({citation['url']})")
+                            else:
+                                st.markdown(f"**{idx}.** {citation}")
+                
+                # Show validation
+                if output.get("judge_verdict"):
+                    verdict = output["judge_verdict"]
                     if verdict == "Pass":
                         st.success(f"✅ Validation: {verdict}")
                     elif verdict == "ERROR":
                         st.error(f"❌ Validation: {verdict}")
                     else:
                         st.warning(f"⚠️ Validation: {verdict}")
-
-                    if st.session_state.agent_output.get("judge_response"):
-                        st.text(st.session_state.agent_output["judge_response"])
+                
+                # Show tools called
+                if output.get("tools_called"):
+                    with st.expander("🔧 Tools Called", expanded=False):
+                        for tool in output["tools_called"]:
+                            st.markdown(f"- **{tool.get('name', 'Unknown')}** ({tool.get('duration', 0):.2f}s)")
+                
+                # Show disclaimer
+                render_postanswer_disclaimer(country_display)
+    
+    else:
+        st.info("👆 Please select a member to continue")
 
 # ============================================================================
-# PAGE 2: AUDIT/GOVERNANCE - COMPLETE REWRITE WITH 3 TABS
+# AUDIT/GOVERNANCE PAGE
 # ============================================================================
 
 elif page == "Audit/Governance":
-    st.title("🔒 Governance & Compliance Portal")
+    render_logo()
+    st.markdown("---")
     
-    # ✅ FIX 3: Create 3 sleek horizontal tabs
-    tab1, tab2, tab3 = st.tabs(["📊 Governance Overview", "🔍 Audit Logs", "👨‍💻 Developer Tools"])
+    # ✅ FIXED: 3 sleek tabs
+    tab1, tab2, tab3 = st.tabs(["📊 Governance Overview", "📋 Audit Logs", "🛠️ Developer Tools"])
     
-    # ========================================================================
-    # TAB 1: GOVERNANCE OVERVIEW
-    # ========================================================================
+    # TAB 1: Governance Overview
     with tab1:
-        st.markdown("## 📊 Governance Overview")
-        st.caption("High-level metrics and compliance monitoring")
+        st.subheader("📊 Governance Dashboard")
         
-        # Quick stats
-        with st.spinner("Loading governance metrics..."):
+        # ✅ FIXED: Added limit parameter
+        try:
             all_audit_df = get_audit_log(limit=1000)
-        
-        if not all_audit_df.empty:
-            col1, col2, col3, col4 = st.columns(4)
             
-            with col1:
-                st.metric("Total Queries", len(all_audit_df))
-            
-            with col2:
-                # ✅ FIX 1: Convert cost to float before formatting
-                total_cost = all_audit_df['cost'].sum() if 'cost' in all_audit_df.columns else 0
-                try:
-                    total_cost = float(total_cost)
-                except (ValueError, TypeError):
-                    total_cost = 0.0
-                st.metric("Total Cost", f"${total_cost:.2f}")
-            
-            with col3:
-                if 'judge_verdict' in all_audit_df.columns:
-                    pass_count = (all_audit_df['judge_verdict'] == 'Pass').sum()
-                    pass_rate = pass_count / len(all_audit_df) * 100 if len(all_audit_df) > 0 else 0
-                    st.metric("Validation Pass Rate", f"{pass_rate:.1f}%")
-                else:
-                    st.metric("Pass Rate", "N/A")
-            
-            with col4:
-                if 'validation_attempts' in all_audit_df.columns:
-                    avg_attempts = all_audit_df['validation_attempts'].mean()
-                    st.metric("Avg Retry Attempts", f"{avg_attempts:.1f}")
-                else:
-                    st.metric("Avg Retries", "N/A")
-            
-            # Queries by country
-            st.markdown("---")
-            st.markdown("### 🌍 Queries by Country")
-            
-            if 'country' in all_audit_df.columns:
-                country_counts = all_audit_df['country'].value_counts()
-                
-                col1, col2 = st.columns(2)
+            if all_audit_df.empty:
+                st.info("No audit records found")
+            else:
+                # Metrics
+                col1, col2, col3, col4 = st.columns(4)
                 
                 with col1:
-                    st.bar_chart(country_counts)
+                    st.metric("Total Queries", len(all_audit_df))
                 
                 with col2:
-                    for country, count in country_counts.items():
-                        st.metric(country, count)
-            
-            # Validation mode usage
-            st.markdown("---")
-            st.markdown("### ⚖️ Validation Modes Used")
-            
-            if 'validation_mode' in all_audit_df.columns:
-                mode_counts = all_audit_df['validation_mode'].value_counts()
+                    # ✅ FIXED: Convert cost to float before sum
+                    total_cost = sum([
+                        float(cost) if isinstance(cost, (int, float, str)) and str(cost).replace('.', '').isdigit() 
+                        else 0.0 
+                        for cost in all_audit_df.get('cost', [0.0])
+                    ])
+                    st.metric("Total Cost", f"${total_cost:.2f}")
                 
-                col1, col2, col3 = st.columns(3)
-                
-                modes = list(mode_counts.items())
-                if len(modes) > 0:
-                    with col1:
-                        st.metric(modes[0][0].replace('_', ' ').title(), modes[0][1])
-                if len(modes) > 1:
-                    with col2:
-                        st.metric(modes[1][0].replace('_', ' ').title(), modes[1][1])
-                if len(modes) > 2:
-                    with col3:
-                        st.metric(modes[2][0].replace('_', ' ').title(), modes[2][1])
-            
-            # Recent activity
-            st.markdown("---")
-            st.markdown("### 🕐 Recent Activity")
-            
-            recent_cols = ['timestamp', 'country', 'query_string', 'judge_verdict']
-            available_cols = [col for col in recent_cols if col in all_audit_df.columns]
-            recent_df = all_audit_df.head(10)[available_cols]
-            st.dataframe(recent_df, use_container_width=True, hide_index=True)
-        
-        else:
-            st.info("No audit data available yet. Process some queries to see governance metrics.")
-    
-    # ========================================================================
-    # TAB 2: AUDIT LOGS (Existing functionality with fixes)
-    # ========================================================================
-    with tab2:
-        st.markdown("## 🔍 Query Audit Logs")
-        st.caption("Detailed logs of all retirement advisory queries")
-        
-        # Filters
-        st.markdown("### 🔎 Filters")
-        
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            filter_country_display = st.selectbox(
-                "Filter by Country",
-                ["All"] + COUNTRIES,
-                key="audit_country_filter"
-            )
-        
-        # ✅ FIX 2: Use display name directly, don't convert to code
-        filter_country = None if filter_country_display == "All" else filter_country_display
-        
-        with col2:
-            filter_user = st.text_input(
-                "Filter by User ID",
-                placeholder="Leave empty for all",
-                key="audit_user_filter"
-            )
-        
-        with col3:
-            filter_session = st.text_input(
-                "Filter by Session",
-                placeholder="Leave empty for all",
-                key="audit_session_filter"
-            )
-        
-        user_filter = filter_user if filter_user else None
-        session_filter = filter_session if filter_session else None
-        
-        # Load filtered audit logs
-        with st.spinner("Loading audit logs..."):
-            audit_df = get_audit_log(
-                session_id=session_filter,
-                user_id=user_filter,
-                country=filter_country
-            )
-        
-        # Display audit table
-        if not audit_df.empty:
-            st.markdown(f"### 📋 {len(audit_df)} Records Found")
-            render_audit_table(audit_df)
-            
-            # Summary metrics for filtered data
-            st.markdown("---")
-            st.markdown("### 📈 Filtered Summary")
-            
-            col1, col2, col3, col4 = st.columns(4)
-            
-            with col1:
-                st.metric("Queries", len(audit_df))
-            
-            with col2:
-                # ✅ FIX 1: Convert cost to float
-                total_cost = audit_df['cost'].sum() if 'cost' in audit_df.columns else 0
-                try:
-                    total_cost = float(total_cost)
-                except (ValueError, TypeError):
-                    total_cost = 0.0
-                st.metric("Total Cost", f"${total_cost:.2f}")
-            
-            with col3:
-                if 'judge_verdict' in audit_df.columns:
-                    pass_count = (audit_df['judge_verdict'] == 'Pass').sum()
-                    pass_rate = pass_count / len(audit_df) * 100 if len(audit_df) > 0 else 0
+                with col3:
+                    pass_rate = (all_audit_df['judge_verdict'] == 'Pass').sum() / len(all_audit_df) * 100 if len(all_audit_df) > 0 else 0
                     st.metric("Pass Rate", f"{pass_rate:.1f}%")
+                
+                with col4:
+                    countries = all_audit_df['country'].nunique()
+                    st.metric("Countries", countries)
+                
+                # Country filter
+                st.markdown("---")
+                st.subheader("Filter by Country")
+                
+                # ✅ FIXED: Use display names for filter
+                filter_country = st.selectbox(
+                    "Select Country",
+                    ["All"] + COUNTRIES,
+                    key="gov_country_filter"
+                )
+                
+                if filter_country == "All":
+                    filtered_df = all_audit_df
                 else:
-                    st.metric("Pass Rate", "N/A")
-            
-            with col4:
-                if 'total_time_seconds' in audit_df.columns:
-                    avg_time = audit_df['total_time_seconds'].mean()
-                    st.metric("Avg Time", f"{avg_time:.1f}s")
-                else:
-                    st.metric("Avg Time", "N/A")
-        else:
-            st.warning("No audit logs found matching the filters.")
-            st.info("💡 **Tip:** Try removing some filters or selecting 'All' for country.")
+                    # ✅ FIXED: Filter by display name, not country code
+                    filtered_df = all_audit_df[all_audit_df['country'] == filter_country]
+                
+                st.dataframe(filtered_df, use_container_width=True, height=400)
+        
+        except Exception as e:
+            st.error(f"Error loading governance data: {str(e)}")
+            import traceback
+            st.code(traceback.format_exc())
     
-    # ========================================================================
-    # TAB 3: DEVELOPER TOOLS (NEW!)
-    # ========================================================================
+    # TAB 2: Audit Logs
+    with tab2:
+        st.subheader("📋 Detailed Audit Logs")
+        
+        try:
+            audit_df = get_audit_log(limit=100)
+            
+            if audit_df.empty:
+                st.info("No audit logs found")
+            else:
+                # Show table
+                render_audit_table(audit_df)
+        
+        except Exception as e:
+            st.error(f"Error loading audit logs: {str(e)}")
+    
+    # TAB 3: Developer Tools
     with tab3:
-        st.markdown("## 👨‍💻 Developer Tools")
-        st.caption("Technical utilities and system information")
+        st.subheader("🛠️ Developer Tools")
         
         # System info
-        st.markdown("### ⚙️ System Configuration")
+        st.markdown("### System Configuration")
         
         col1, col2 = st.columns(2)
         
         with col1:
-            st.markdown("**🤖 LLM Endpoints**")
-            st.code(f"""
-Main LLM: {MAIN_LLM_ENDPOINT}
-Judge LLM: {JUDGE_LLM_ENDPOINT}
-            """)
+            st.markdown("**LLM Endpoints:**")
+            st.code(f"Main: {MAIN_LLM_ENDPOINT}")
+            st.code(f"Judge: {JUDGE_LLM_ENDPOINT}")
         
         with col2:
-            st.markdown("**🗄️ Data Sources**")
-            st.code(f"""
-Warehouse: {SQL_WAREHOUSE_ID[:20]}...
-Catalog: super_advisory_demo
-Schema: pension_calculators
-            """)
+            st.markdown("**Infrastructure:**")
+            st.code(f"Warehouse: {SQL_WAREHOUSE_ID}")
+            if MLFLOW_PROD_EXPERIMENT_PATH:
+                st.code(f"MLflow: {MLFLOW_PROD_EXPERIMENT_PATH}")
         
-        # UC Functions status
         st.markdown("---")
-        st.markdown("### 🔧 Unity Catalog Functions")
         
-        if st.button("🔍 Check UC Functions Status"):
-            with st.spinner("Checking UC functions..."):
-                try:
-                    from databricks.sdk import WorkspaceClient
-                    w = WorkspaceClient()
-                    
-                    # Try to list functions
-                    query = "SHOW FUNCTIONS IN super_advisory_demo.pension_calculators"
-                    statement = w.statement_execution.execute_statement(
-                        warehouse_id=SQL_WAREHOUSE_ID,
-                        statement=query,
-                        wait_timeout="10s"
-                    )
-                    
-                    st.success("✅ UC Functions schema exists!")
-                    
-                    # Show function count
-                    if statement.result and statement.result.data_array:
-                        function_count = len(statement.result.data_array)
-                        st.metric("Functions Deployed", function_count)
-                        
-                        # Expected: 12 functions (3 per country × 4 countries)
-                        if function_count == 12:
-                            st.success("✅ All 12 functions deployed correctly!")
-                        else:
-                            st.warning(f"⚠️ Expected 12 functions, found {function_count}")
-                    
-                except Exception as e:
-                    st.error(f"❌ Error checking UC functions: {e}")
-                    st.info("💡 Make sure you've run the SQL deployment scripts.")
+        # UC Functions check
+        st.markdown("### Unity Catalog Functions")
         
-        # MLflow integration
+        functions_info = {
+            "Australia": ["au_calculate_tax", "au_check_pension_impact", "au_project_balance"],
+            "USA": ["us_calculate_tax", "us_check_social_security", "us_project_401k"],
+            "United Kingdom": ["uk_calculate_tax", "uk_check_state_pension", "uk_project_pension"],
+            "India": ["in_calculate_epf_tax", "in_calculate_nps", "in_project_retirement"]
+        }
+        
+        for country, functions in functions_info.items():
+            with st.expander(f"🌍 {country} Functions ({len(functions)})", expanded=False):
+                for func in functions:
+                    st.markdown(f"✅ `super_advisory_demo.pension_calculators.{func}`")
+        
         st.markdown("---")
-        st.markdown("### 📊 MLflow Integration")
         
-        col1, col2 = st.columns(2)
+        # MLflow runs
+        if MLFLOW_PROD_EXPERIMENT_PATH:
+            st.markdown("### MLflow Experiment Tracking")
+            show_mlflow_runs(MLFLOW_PROD_EXPERIMENT_PATH)
         
-        with col1:
-            st.markdown("**Experiment Path**")
-            st.code(MLFLOW_PROD_EXPERIMENT_PATH)
-        
-        with col2:
-            if st.button("🔗 View MLflow Runs"):
-                st.info("Opening MLflow UI...")
-                try:
-                    show_mlflow_runs(exp_path=MLFLOW_PROD_EXPERIMENT_PATH)
-                except:
-                    st.warning("MLflow viewer not available")
-        
-        # Session debug info
         st.markdown("---")
-        st.markdown("### 🐛 Session Debug Info")
         
-        with st.expander("View Session State", expanded=False):
-            debug_info = {
-                "session_id": st.session_state.get("session_id", "N/A"),
-                "user_id": st.session_state.get("user_id", "N/A"),
-                "country": st.session_state.get("country_display", "N/A"),
-                "show_logs": st.session_state.get("show_logs", "N/A"),
-                "validation_mode": st.session_state.get("validation_mode", "N/A"),
-                "has_agent_output": st.session_state.get("agent_output") is not None
-            }
-            st.json(debug_info)
-        
-        # Clear cache button
-        st.markdown("---")
-        if st.button("🗑️ Clear All Caches"):
-            st.cache_data.clear()
-            st.cache_resource.clear()
-            st.success("✅ All caches cleared!")
-            st.rerun()
-
-# Footer
-st.markdown("---")
-st.caption(f"🏦 {BRANDCONFIG['brand_name']} | Session: {st.session_state.session_id[:8]}... | Support: {BRANDCONFIG.get('support_email', 'support@example.com')}")
+        # Debug info
+        with st.expander("🐛 Debug Information", expanded=False):
+            st.json({
+                "session_id": st.session_state.session_id,
+                "user_id": st.session_state.user_id,
+                "current_page": st.session_state.page,
+                "selected_country": st.session_state.country_display,
+                "selected_member": st.session_state.selected_member
+            })
