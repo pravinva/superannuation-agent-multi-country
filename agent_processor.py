@@ -1,10 +1,8 @@
-# agent_processor.py - NO CHANGES NEEDED ✅
+# agent_processor.py - FIXED VERSION
 """
 Agent processor wrapper that integrates with Streamlit UI
-Supports validation mode parameter and real-time progress updates
-
-NOTE: This file already works with the new tools.py because agent.py handles
-the tool calling internally. No changes needed here!
+✅ FIXED: Changed agent.process_query() → agent.query()
+✅ FIXED: Updated parameters to match agent.query() signature
 """
 
 from agent import MultiCountryAdvisorAgent
@@ -52,11 +50,11 @@ def agent_query(user_id, country, query_str, extra_context, session_id,
                 st.progress(0.20, text="Query plan ready")
             
             elif stage == "tool_start":
-                st.info(f"⚙️ **Step 2/5:** Calling {country} UC Functions (3 calculators)...")
+                st.info(f"⚙️ **Step 2/5:** Calling {country} UC Functions...")
                 st.progress(0.25, text="Executing Unity Catalog functions...")
             
             elif stage == "tool_complete":
-                st.success(f"✅ **Step 2/5 Complete:** 3 UC Functions completed")
+                st.success(f"✅ **Step 2/5 Complete:** UC Functions completed")
                 st.progress(0.35, text="Calculator complete")
             
             elif stage == "synthesis_start":
@@ -119,15 +117,13 @@ def agent_query(user_id, country, query_str, extra_context, session_id,
     member_name = extra_context.get('name', 'Member')
     
     try:
-        # Call agent WITH status callback and validation_mode
-        # Agent internally calls calculate_retirement_advice with warehouse_id
-        response, tool_results = agent.process_query(
-            member_id=member_id,
+        # ✅ FIXED: Call agent.query() with correct parameters
+        answer, citations, metadata, judge_resp, judge_verdict, error_info, tools_called = agent.query(
             user_query=query_str,
-            temperature=None,
+            member_id=member_id,
             anonymize=False,  # Use real names for hyper-personalization
-            enable_validation=True,
-            validation_mode=validation_mode,  # PASS VALIDATION MODE
+            validation_mode=validation_mode,
+            max_validation_attempts=2,
             status_callback=status_callback
         )
         
@@ -141,7 +137,7 @@ def agent_query(user_id, country, query_str, extra_context, session_id,
             "recommendations": []
         }
         
-        sections = response.split("##")
+        sections = answer.split("##")
         for section in sections:
             if "Situation" in section:
                 lines = [l.strip() for l in section.split('\n') if l.strip() and '##' not in l and '---' not in l]
@@ -153,22 +149,7 @@ def agent_query(user_id, country, query_str, extra_context, session_id,
                 lines = [l.strip() for l in section.split('\n') if l.strip() and any(c.isdigit() for c in l[:3])]
                 response_dict['recommendations'] = [l.lstrip('0123456789.').strip() for l in lines]
         
-        # Extract metadata
-        validation = tool_results.get('_validation', {})
-        judge_verdict = "Pass" if validation.get('passed', True) else "Review"
-        judge_resp = validation.get('reasoning', '')
-        
-        tools_called = tool_results.get('_tools_called', [])
-        
-        # Citations from tool results (now has real citations from UC Functions!)
-        citations = tool_results.get('citations', [
-            f"{country} Tax Authority Guidelines",
-            f"{country} Pension Regulations 2025"
-        ])
-        
-        error_info = ""
-        
-        return response, citations, response_dict, judge_resp, judge_verdict, error_info, tools_called
+        return answer, citations, response_dict, judge_resp, judge_verdict, error_info, tools_called
         
     except Exception as e:
         import traceback

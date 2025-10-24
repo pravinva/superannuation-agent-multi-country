@@ -42,6 +42,45 @@ COUNTRIES = ["Australia", "USA", "United Kingdom", "India"]
 st.set_page_config(
     page_title="Global Retirement Advisory",
     page_icon="🏦",
+
+# ✅ WIDE TABS CSS - Makes tabs fill horizontal space
+st.markdown("""
+<style>
+    /* Make tabs fill full width and look sleeker */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+        width: 100%;
+    }
+    
+    .stTabs [data-baseweb="tab"] {
+        flex-grow: 1;
+        white-space: pre-wrap;
+        background-color: #f0f2f6;
+        border-radius: 6px 6px 0px 0px;
+        padding: 12px 24px;
+        font-size: 16px;
+        font-weight: 600;
+        border: 2px solid transparent;
+        transition: all 0.3s;
+    }
+    
+    .stTabs [data-baseweb="tab"]:hover {
+        background-color: #e6e9ef;
+        border-color: #4169e1;
+    }
+    
+    .stTabs [aria-selected="true"] {
+        background-color: #ffffff;
+        border-color: #4169e1;
+        border-bottom: 2px solid #ffffff;
+    }
+    
+    .stTabs [data-baseweb="tab-panel"] {
+        padding-top: 20px;
+    }
+</style>
+""", unsafe_allow_html=True)
+
     layout="wide",
     initial_sidebar_state="expanded"
 )

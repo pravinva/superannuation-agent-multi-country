@@ -1,5 +1,8 @@
-# audit/audit_utils.py - FIXED VERSION
-"""Audit logging with proper parameter handling - ALL PARAMETERS NOW MATCH"""
+# audit/audit_utils.py - COMPLETE FIXED VERSION
+"""
+Audit logging with proper parameter handling
+✅ FIXED: Added limit parameter to get_audit_log()
+"""
 
 import uuid
 import datetime
@@ -56,9 +59,9 @@ def log_query_event(
     judge_verdict,
     error_info,
     cost=0.0,
-    validation_mode="llm_judge",     # ✅ FIXED: Added parameter
-    validation_attempts=1,           # ✅ FIXED: Added parameter
-    total_time_seconds=0.0          # ✅ FIXED: Added parameter
+    validation_mode="llm_judge",
+    validation_attempts=1,
+    total_time_seconds=0.0
 ):
     """
     Log query event to governance table
@@ -103,7 +106,6 @@ def log_query_event(
         if agent_response and len(agent_response) > 15000:
             agent_response = agent_response[:15000] + "... [truncated]"
         
-        # ✅ FIXED: Added validation_mode, validation_attempts, total_time_seconds to INSERT
         query = f"""
 INSERT INTO {table_path} (
     event_id, timestamp, user_id, session_id, country, query_string,
@@ -140,14 +142,18 @@ INSERT INTO {table_path} (
         import traceback
         traceback.print_exc()
 
-def get_audit_log(session_id=None, user_id=None, country=None):
+
+def get_audit_log(session_id=None, user_id=None, country=None, limit=100):
     """
+    ✅ FIXED: Added limit parameter with default value
+    
     Retrieve audit logs with optional filters
     
     Args:
         session_id: Filter by session ID
         user_id: Filter by user ID
         country: Filter by country
+        limit: Maximum number of records to return (default: 100)
     
     Returns:
         DataFrame with audit records
@@ -167,13 +173,15 @@ def get_audit_log(session_id=None, user_id=None, country=None):
         if conditions:
             query += " WHERE " + " AND ".join(conditions)
         
-        query += " ORDER BY timestamp DESC LIMIT 100"
+        # ✅ FIXED: Use limit parameter instead of hardcoded value
+        query += f" ORDER BY timestamp DESC LIMIT {limit}"
         
         return execute_query(query)
     
     except Exception as e:
         print(f"Error retrieving audit log: {e}")
         return pd.DataFrame()
+
 
 def get_query_cost(event_row):
     """Get cost for a specific query event"""
