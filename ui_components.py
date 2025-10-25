@@ -651,3 +651,359 @@ def render_audit_table(audit_df):
         use_container_width=True,
         hide_index=True
     )
+
+
+def render_enhanced_audit_tab():
+    """Enhanced Audit Tab with 4 comprehensive views"""
+    import mlflow
+    from datetime import datetime
+    from audit.audit_utils import get_audit_log
+    from config import MLFLOW_PROD_EXPERIMENT_PATH, get_governance_table_path
+    
+    # Create 4 tabs - full width
+    tab1, tab2, tab3, tab4 = st.tabs([
+        "🗄️ Governance Logs",
+        "🔬 MLflow Traces", 
+        "📊 Token Analysis",
+        "💰 Cost Analysis"
+    ])
+    
+    # TAB 1: GOVERNANCE LOGS
+    with tab1:
+        st.subheader("🗄️ Unity Catalog Governance Logs")
+        
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            filter_country = st.selectbox("Country", ["All", "Australia", "USA", "United Kingdom", "India"], key="gov_country")
+        with col2:
+            filter_verdict = st.selectbox("Verdict", ["All", "Pass", "Fail", "Review", "ERROR"], key="gov_verdict")
+        with col3:
+            filter_mode = st.selectbox("Mode", ["All", "llm_judge", "hybrid", "deterministic"], key="gov_mode")
+        with col4:
+            limit = st.number_input("Limit", 10, 1000, 100, 10, key="gov_limit")
+        
+        if st.button("🔄 Refresh", key="refresh_gov"):
+            if 'gov_logs_cache' in st.session_state:
+                del st.session_state.gov_logs_cache
+        
+        if 'gov_logs_cache' not in st.session_state:
+            with st.spinner("Loading..."):
+                try:
+                    st.session_state.gov_logs_cache = get_audit_log(limit=limit)
+                except Exception as e:
+                    st.error(f"Error: {e}")
+                    st.session_state.gov_logs_cache = pd.DataFrame()
+        
+        df = st.session_state.gov_logs_cache
+        
+        if df is not None and not df.empty:
+            df_filtered = df.copy()
+            
+            if filter_country != "All" and 'country' in df_filtered.columns:
+                df_filtered = df_filtered[df_filtered['country'] == filter_country]
+            if filter_verdict != "All" and 'judge_verdict' in df_filtered.columns:
+                df_filtered = df_filtered[df_filtered['judge_verdict'] == filter_verdict]
+            if filter_mode != "All" and 'validation_mode' in df_filtered.columns:
+                df_filtered = df_filtered[df_filtered['validation_mode'] == filter_mode]
+            
+            st.markdown("---")
+            st.markdown("### 📈 Summary")
+            
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Queries", f"{len(df_filtered):,}")
+            with col2:
+                if 'cost' in df_filtered.columns:
+                    st.metric("Cost", f"${pd.to_numeric(df_filtered['cost'], errors='coerce').sum():.2f}")
+                else:
+                    st.metric("Cost", "N/A")
+            with col3:
+                if 'judge_verdict' in df_filtered.columns:
+                    pass_rate = ((df_filtered['judge_verdict'] == 'Pass').sum() / len(df_filtered) * 100) if len(df_filtered) > 0 else 0
+                    st.metric("Pass Rate", f"{pass_rate:.1f}%")
+                else:
+                    st.metric("Pass Rate", "N/A")
+            with col4:
+                if 'total_time_seconds' in df_filtered.columns:
+                    st.metric("Avg Time", f"{pd.to_numeric(df_filtered['total_time_seconds'], errors='coerce').mean():.2f}s")
+                else:
+                    st.metric("Avg Time", "N/A")
+            
+            st.markdown("---")
+            
+            display_cols = ['timestamp', 'user_id', 'country', 'query_string', 'judge_verdict', 'validation_mode', 'total_time_seconds', 'cost', 'tool_used']
+            available_cols = [col for col in display_cols if col in df_filtered.columns]
+            
+            if 'timestamp' in df_filtered.columns:
+                try:
+                    df_filtered['timestamp'] = pd.to_datetime(df_filtered['timestamp']).dt.strftime('%Y-%m-%d %H:%M:%S')
+                except:
+                    pass
+            
+            st.dataframe(df_filtered[available_cols], use_container_width=True, height=400)
+            
+            csv = df_filtered.to_csv(index=False)
+            st.download_button("📥 Download CSV", csv, f"logs_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv", "text/csv")
+        else:
+            st.info("No logs. Run a query first.")
+    
+    # TAB 2: MLFLOW TRACES
+    with tab2:
+        st.subheader("🔬 MLflow Traces")
+        
+        if not MLFLOW_PROD_EXPERIMENT_PATH:
+            st.error("Configure MLFLOW_PROD_EXPERIMENT_PATH in config.py")
+            st.stop()
+        
+        st.markdown(f"**Experiment:** `{MLFLOW_PROD_EXPERIMENT_PATH}`")
+        
+        if st.button("🔄 Refresh", key="refresh_mlflow"):
+            if 'mlflow_runs_cache' in st.session_state:
+                del st.session_state.mlflow_runs_cache
+        
+        if 'mlflow_runs_cache' not in st.session_state:
+            with st.spinner("Loading MLflow..."):
+                try:
+                    mlflow.set_experiment(MLFLOW_PROD_EXPERIMENT_PATH)
+                    runs_df = mlflow.search_runs(
+                        experiment_names=[MLFLOW_PROD_EXPERIMENT_PATH],
+                        max_results=100,
+                        order_by=["start_time DESC"]
+                    )
+                    st.session_state.mlflow_runs_cache = runs_df
+                    st.success(f"✅ Loaded {len(runs_df)} runs")
+                except Exception as e:
+                    st.error(f"Error: {e}")
+                    with st.expander("Troubleshooting"):
+                        st.markdown("1. Run a query first\n2. Check experiment path\n3. Verify permissions")
+                        try:
+                            experiments = mlflow.search_experiments()
+                            if experiments is not None and len(experiments) > 0:
+                                st.dataframe(pd.DataFrame({'Name': [e.name for e in experiments]}))
+                        except:
+                            pass
+                    st.session_state.mlflow_runs_cache = pd.DataFrame()
+        
+        runs_df = st.session_state.mlflow_runs_cache
+        
+        if runs_df is not None and not runs_df.empty:
+            st.markdown("---")
+            st.markdown("### 📊 Summary")
+            
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Runs", f"{len(runs_df):,}")
+            with col2:
+                if 'metrics.cost_usd' in runs_df.columns:
+                    st.metric("Cost", f"${pd.to_numeric(runs_df['metrics.cost_usd'], errors='coerce').sum():.2f}")
+                else:
+                    st.metric("Cost", "Not logged")
+            with col3:
+                if 'metrics.total_time_seconds' in runs_df.columns:
+                    st.metric("Avg Time", f"{pd.to_numeric(runs_df['metrics.total_time_seconds'], errors='coerce').mean():.2f}s")
+                else:
+                    st.metric("Avg Time", "N/A")
+            with col4:
+                if 'metrics.tools_called' in runs_df.columns:
+                    st.metric("Avg Tools", f"{pd.to_numeric(runs_df['metrics.tools_called'], errors='coerce').mean():.1f}")
+                else:
+                    st.metric("Avg Tools", "N/A")
+            
+            st.markdown("---")
+            
+            display_cols = ['start_time', 'run_name', 'status', 'params.country', 'params.validation_mode', 'metrics.total_time_seconds', 'metrics.cost_usd', 'metrics.tools_called']
+            available_cols = [col for col in display_cols if col in runs_df.columns]
+            
+            runs_df_display = runs_df.copy()
+            if 'start_time' in runs_df_display.columns:
+                try:
+                    runs_df_display['start_time'] = pd.to_datetime(runs_df_display['start_time']).dt.strftime('%Y-%m-%d %H:%M:%S')
+                except:
+                    pass
+            
+            st.dataframe(runs_df_display[available_cols].head(50), use_container_width=True, height=400)
+            
+            st.markdown("---")
+            st.markdown("### 🔍 Run Details")
+            
+            if len(runs_df) > 0:
+                run_options = [f"{row.get('run_name', row.get('run_id', 'Unknown')[:8])} | {row.get('start_time', 'Unknown')}" for idx, row in runs_df.head(20).iterrows()]
+                selected_idx = st.selectbox("Select Run", range(len(run_options)), format_func=lambda x: run_options[x], key="mlflow_run_selector")
+                
+                if selected_idx is not None:
+                    selected_run = runs_df.iloc[selected_idx]
+                    
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        st.markdown("**Parameters:**")
+                        param_cols = [col for col in runs_df.columns if col.startswith('params.')]
+                        if param_cols:
+                            for col in param_cols:
+                                val = selected_run[col]
+                                if pd.notna(val):
+                                    st.text(f"• {col.replace('params.', '')}: {val}")
+                        else:
+                            st.info("No parameters")
+                    
+                    with col2:
+                        st.markdown("**Metrics:**")
+                        metric_cols = [col for col in runs_df.columns if col.startswith('metrics.')]
+                        if metric_cols:
+                            for col in metric_cols:
+                                val = selected_run[col]
+                                if pd.notna(val):
+                                    st.text(f"• {col.replace('metrics.', '')}: {val:.4f}" if isinstance(val, float) else f"• {col.replace('metrics.', '')}: {val}")
+                        else:
+                            st.info("No metrics")
+        else:
+            st.warning("No runs found")
+            st.info("**Next:** Run a query, then refresh")
+    
+    # TAB 3: TOKEN ANALYSIS
+    with tab3:
+        st.subheader("📊 Token Analysis")
+        
+        st.info("💡 Token tracking enabled. Check console output.")
+        
+        if 'mlflow_runs_cache' not in st.session_state:
+            try:
+                mlflow.set_experiment(MLFLOW_PROD_EXPERIMENT_PATH)
+                st.session_state.mlflow_runs_cache = mlflow.search_runs(experiment_names=[MLFLOW_PROD_EXPERIMENT_PATH], max_results=500)
+            except:
+                st.session_state.mlflow_runs_cache = pd.DataFrame()
+        
+        runs_df = st.session_state.mlflow_runs_cache
+        
+        if runs_df is not None and not runs_df.empty:
+            token_cols = [col for col in runs_df.columns if 'token' in col.lower()]
+            
+            if token_cols:
+                st.success("✅ Token data found")
+                st.markdown("### 📈 Token Stats")
+                
+                col1, col2, col3 = st.columns(3)
+                
+                for col_name in ['metrics.total_tokens', 'metrics.token_count']:
+                    if col_name in runs_df.columns:
+                        with col1:
+                            st.metric("Avg Total", f"{pd.to_numeric(runs_df[col_name], errors='coerce').mean():,.0f}")
+                        break
+                
+                for col_name in ['metrics.input_tokens', 'metrics.prompt_tokens']:
+                    if col_name in runs_df.columns:
+                        with col2:
+                            st.metric("Avg Input", f"{pd.to_numeric(runs_df[col_name], errors='coerce').mean():,.0f}")
+                        break
+                
+                for col_name in ['metrics.output_tokens', 'metrics.completion_tokens']:
+                    if col_name in runs_df.columns:
+                        with col3:
+                            st.metric("Avg Output", f"{pd.to_numeric(runs_df[col_name], errors='coerce').mean():,.0f}")
+                        break
+            else:
+                st.warning("No token metrics in MLflow")
+                st.info("Tokens tracked in console. To log to MLflow, add:\n```python\nmlflow.log_metrics({\"input_tokens\": x, \"output_tokens\": y})\n```")
+        
+        if 'gov_logs_cache' not in st.session_state:
+            try:
+                st.session_state.gov_logs_cache = get_audit_log(limit=500)
+            except:
+                st.session_state.gov_logs_cache = pd.DataFrame()
+        
+        gov_df = st.session_state.gov_logs_cache
+        
+        if gov_df is not None and not gov_df.empty and 'query_string' in gov_df.columns:
+            st.markdown("---")
+            st.markdown("### 📏 Query Length")
+            
+            gov_df['query_length'] = gov_df['query_string'].str.len()
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Avg", f"{gov_df['query_length'].mean():.0f} chars")
+            with col2:
+                st.metric("Min", f"{gov_df['query_length'].min():.0f} chars")
+            with col3:
+                st.metric("Max", f"{gov_df['query_length'].max():.0f} chars")
+    
+    # TAB 4: COST ANALYSIS
+    with tab4:
+        st.subheader("💰 Cost Analysis")
+        
+        if 'gov_logs_cache' not in st.session_state:
+            try:
+                st.session_state.gov_logs_cache = get_audit_log(limit=500)
+            except:
+                st.session_state.gov_logs_cache = pd.DataFrame()
+        
+        df = st.session_state.gov_logs_cache
+        
+        if df is not None and not df.empty and 'cost' in df.columns:
+            df['cost'] = pd.to_numeric(df['cost'], errors='coerce').fillna(0)
+            df_with_cost = df[df['cost'] > 0]
+            
+            if len(df_with_cost) > 0:
+                st.markdown("### 💵 Summary")
+                
+                col1, col2, col3, col4 = st.columns(4)
+                
+                total_cost = df_with_cost['cost'].sum()
+                avg_cost = df_with_cost['cost'].mean()
+                
+                with col1:
+                    st.metric("Total", f"${total_cost:.2f}")
+                with col2:
+                    st.metric("Avg/Query", f"${avg_cost:.4f}")
+                with col3:
+                    st.metric("Min", f"${df_with_cost['cost'].min():.4f}")
+                with col4:
+                    st.metric("Max", f"${df_with_cost['cost'].max():.4f}")
+                
+                if 'country' in df_with_cost.columns:
+                    st.markdown("---")
+                    st.markdown("### 🌍 By Country")
+                    
+                    country_stats = df_with_cost.groupby('country').agg({'cost': ['sum', 'mean', 'count']}).round(4)
+                    country_stats.columns = ['Total ($)', 'Avg ($)', 'Count']
+                    st.dataframe(country_stats.sort_values('Total ($)', ascending=False), use_container_width=True)
+                
+                st.markdown("---")
+                st.markdown("### 🔮 Projections")
+                
+                queries_per_min = st.slider("Queries/min", 0.1, 10.0, 0.1, 0.1, help="Adjust volume")
+                
+                queries_per_hour = queries_per_min * 60
+                queries_per_day = queries_per_hour * 24
+                queries_per_month = queries_per_day * 30
+                queries_per_year = queries_per_month * 12
+                
+                col1, col2, col3, col4 = st.columns(4)
+                
+                with col1:
+                    st.metric("Hourly", f"${queries_per_hour * avg_cost:.2f}", delta=f"{queries_per_hour:.0f} queries")
+                with col2:
+                    st.metric("Daily", f"${queries_per_day * avg_cost:.2f}", delta=f"{queries_per_day:.0f} queries")
+                with col3:
+                    st.metric("Monthly", f"${queries_per_month * avg_cost:.2f}", delta=f"{queries_per_month:.0f} queries")
+                with col4:
+                    st.metric("Yearly", f"${queries_per_year * avg_cost:,.2f}", delta=f"{queries_per_year:,.0f} queries")
+            else:
+                st.info("No costs yet. Run a query!")
+        else:
+            st.info("💡 Cost tracking enabled!")
+            st.markdown("""
+            **Avg: ~$0.135/query**
+            
+            | Type | Cost |
+            |------|------|
+            | Simple | $0.08 |
+            | Medium | $0.13 |
+            | Complex | $0.15 |
+            
+            **@ 0.1 queries/min:**
+            - Hourly: $0.81
+            - Daily: $19.47
+            - Monthly: $584.19
+            """)

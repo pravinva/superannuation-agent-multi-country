@@ -1,13 +1,13 @@
-# app.py - COMPLETE FIXED VERSION WITH DF ERROR HANDLING
+# app.py - COMPLETE VERSION WITH MLFLOW TRACES
 
 """
 Multi-Country Retirement Advisory Application
 
-✅ FIXED: All DataFrame boolean context errors
-✅ FIXED: Safe column access and numeric conversions
-✅ FIXED: Comprehensive error handling for audit data
-✅ ADDED: Utility functions for safe DataFrame operations
-✅ ENHANCED: Two integration options for audit tab
+✅ MLflow traces integration with experiment tracking
+✅ Enhanced governance tab with 4 sub-tabs (Governance, MLflow, Tokens, Costs)
+✅ Token analysis and cost projections
+✅ Safe DataFrame operations
+✅ Comprehensive audit logging
 """
 
 import streamlit as st
@@ -15,25 +15,48 @@ import uuid
 import os
 import pandas as pd
 import numpy as np
-from config import BRANDCONFIG, MLFLOW_PROD_EXPERIMENT_PATH, ARCHITECTURECONTENT, MAIN_LLM_ENDPOINT, JUDGE_LLM_ENDPOINT, SQL_WAREHOUSE_ID
+import mlflow
+from config import (
+    BRANDCONFIG, 
+    MLFLOW_PROD_EXPERIMENT_PATH, 
+    ARCHITECTURECONTENT, 
+    MAIN_LLM_ENDPOINT, 
+    JUDGE_LLM_ENDPOINT, 
+    SQL_WAREHOUSE_ID
+)
 from ui_components import (
-    render_logo, render_member_card, render_question_card,
-    render_country_welcome, render_postanswer_disclaimer,
-    render_audit_table
+    render_logo, 
+    render_member_card, 
+    render_question_card,
+    render_country_welcome, 
+    render_postanswer_disclaimer,
+    render_audit_table,
+    render_enhanced_audit_tab
 )
 
 from progress_utils import render_progress, initialize_live_progress_tracker
 from audit.audit_utils import get_audit_log
-from mlflow_utils import show_mlflow_runs
 from agent_processor import agent_query
 from data_utils import get_members_by_country
 from country_content import COUNTRY_PROMPTS, COUNTRY_DISCLAIMERS, POST_ANSWER_DISCLAIMERS
 
 # ============================================================================
-# 🆕 IMPORT ENHANCED AUDIT TAB
+# MLFLOW CONFIGURATION
 # ============================================================================
-from audit_tab_enhanced import render_enhanced_audit_tab
 
+def initialize_mlflow():
+    """Initialize MLflow tracking"""
+    try:
+        if MLFLOW_PROD_EXPERIMENT_PATH:
+            mlflow.set_experiment(MLFLOW_PROD_EXPERIMENT_PATH)
+            print(f"✅ MLflow experiment set: {MLFLOW_PROD_EXPERIMENT_PATH}")
+        else:
+            print("⚠️ MLFLOW_PROD_EXPERIMENT_PATH not configured")
+    except Exception as e:
+        print(f"❌ MLflow initialization error: {e}")
+
+# Initialize MLflow on startup
+initialize_mlflow()
 
 # ============================================================================
 # SAFE DATAFRAME UTILITY FUNCTIONS
@@ -48,7 +71,6 @@ def safe_column_sum(df, column_name, default=0):
     if not safe_dataframe_check(df) or column_name not in df.columns:
         return default
     try:
-        # Convert to numeric, coerce errors, then sum
         values = pd.to_numeric(df[column_name], errors='coerce').fillna(0)
         return float(values.sum())
     except (ValueError, TypeError, Exception):
@@ -159,6 +181,8 @@ if "members_list" not in st.session_state:
     st.session_state.members_list = []
 if "current_country_code" not in st.session_state:
     st.session_state.current_country_code = None
+if "mlflow_run_id" not in st.session_state:
+    st.session_state.mlflow_run_id = None
 
 # Sidebar
 if os.path.exists("logo.png"):
@@ -184,6 +208,8 @@ st.session_state.show_logs = st.sidebar.checkbox(
 st.sidebar.markdown("---")
 st.sidebar.caption(f"Session: {st.session_state.session_id[:8]}...")
 st.sidebar.caption(f"User: {st.session_state.user_id}")
+if st.session_state.mlflow_run_id:
+    st.sidebar.caption(f"MLflow Run: {st.session_state.mlflow_run_id[:8]}...")
 
 st.session_state.page = page
 
@@ -208,9 +234,17 @@ selected = st.sidebar.radio(
 
 st.session_state.validation_mode = mode_options[selected]
 
+# Show mode explanation
+if st.session_state.validation_mode == "llm_judge":
+    st.sidebar.info("🎯 Uses LLM for comprehensive quality checks")
+elif st.session_state.validation_mode == "hybrid":
+    st.sidebar.info("⚡ Fast checks first, then LLM if needed")
+else:
+    st.sidebar.info("🚀 Rule-based validation only")
+
 
 # ============================================================================
-# PAGE 1: ADVISORY INTERFACE
+# PAGE 1: ADVISORY
 # ============================================================================
 
 if page == "Advisory":
@@ -358,6 +392,23 @@ if page == "Advisory":
                 # ✅ Initialize live progress tracker FIRST
                 initialize_live_progress_tracker()
                 
+                # Start MLflow run
+                try:
+                    mlflow_run = mlflow.start_run(
+                        run_name=f"query_{st.session_state.session_id[:8]}"
+                    )
+                    st.session_state.mlflow_run_id = mlflow_run.info.run_id
+                    
+                    # Log parameters
+                    mlflow.log_param("country", country_display)
+                    mlflow.log_param("validation_mode", st.session_state.validation_mode)
+                    mlflow.log_param("member_id", member.get('member_id'))
+                    mlflow.log_param("session_id", st.session_state.session_id)
+                    
+                except Exception as e:
+                    st.warning(f"MLflow tracking unavailable: {e}")
+                    mlflow_run = None
+                
                 with st.spinner("🔄 Processing your request..."):
                     if not st.session_state.show_logs:
                         progress_placeholder = st.empty()
@@ -388,6 +439,24 @@ if page == "Advisory":
                         
                         st.session_state.agent_output = agent_output
                         
+                        # Log to MLflow
+                        if mlflow_run:
+                            try:
+                                # Log metrics
+                                mlflow.log_metric("validation_attempts", 1)
+                                mlflow.log_param("judge_verdict", judge_verdict)
+                                mlflow.log_metric("pass", 1 if judge_verdict == "Pass" else 0)
+                                
+                                # Log query and response
+                                mlflow.log_text(question, "query.txt")
+                                mlflow.log_text(answer, "response.txt")
+                                
+                                # End run
+                                mlflow.end_run()
+                                
+                            except Exception as e:
+                                st.warning(f"MLflow logging error: {e}")
+                        
                         if not st.session_state.show_logs:
                             progress_placeholder.empty()
                     
@@ -396,6 +465,9 @@ if page == "Advisory":
                         import traceback
                         st.code(traceback.format_exc())
                         st.session_state.agent_output = None
+                        
+                        if mlflow_run:
+                            mlflow.end_run(status="FAILED")
                         
                         if not st.session_state.show_logs:
                             progress_placeholder.empty()
@@ -422,212 +494,18 @@ if page == "Advisory":
                     st.caption(f"[{i}] {cite}")
             else:
                 st.caption("No citations available.")
-            
-            if st.session_state.agent_output.get("judge_verdict"):
-                with st.expander("🔍 Quality Validation Details"):
-                    verdict = st.session_state.agent_output["judge_verdict"]
-                    if verdict == "Pass":
-                        st.success(f"✅ Validation: {verdict}")
-                    elif verdict == "ERROR":
-                        st.error(f"❌ Validation: {verdict}")
-                    else:
-                        st.warning(f"⚠️ Validation: {verdict}")
-                    
-                    if st.session_state.agent_output.get("judge_response"):
-                        st.text(st.session_state.agent_output["judge_response"])
 
 
 # ============================================================================
-# PAGE 2: AUDIT/GOVERNANCE - TWO INTEGRATION OPTIONS
+# PAGE 2: AUDIT/GOVERNANCE WITH ENHANCED TAB
 # ============================================================================
 
 elif page == "Audit/Governance":
     st.title("🔒 Governance & Compliance Portal")
     
-    # ========================================================================
-    # OPTION 1: REPLACE ENTIRE TAB WITH ENHANCED VERSION
-    # ========================================================================
-    # Uncomment this option if you want the enhanced audit tab to be the main view
-    
-    """
-    # OPTION 1: Single enhanced tab
+    # Use the enhanced audit tab with all 4 sub-tabs
     render_enhanced_audit_tab()
-    """
     
-    # ========================================================================
-    # OPTION 2: KEEP CONFIGURATION TAB, ADD ENHANCED AUDIT AS PEER TAB
-    # ========================================================================
-    # This is the default option - enhanced audit + configuration side-by-side
-    
-    # Create 2 top-level tabs: Enhanced Audit & Configuration
-    enhanced_tab, config_tab = st.tabs(["📊 Enhanced Audit & Analytics", "⚙️ Configuration"])
-    
-    # ------------------------------------------------------------------------
-    # ENHANCED AUDIT TAB (4 sub-tabs: Governance, MLflow, Tokens, Cost)
-    # ------------------------------------------------------------------------
-    with enhanced_tab:
-        render_enhanced_audit_tab()
-    
-    # ------------------------------------------------------------------------
-    # CONFIGURATION TAB (Keep existing configuration)
-    # ------------------------------------------------------------------------
-    with config_tab:
-        st.markdown("## ⚙️ Configuration")
-        st.caption("Adjust system settings and parameters")
-        st.markdown("---")
-        
-        # SECTION 1: WAREHOUSE CONFIGURATION
-        st.markdown("### 🏢 Data Warehouse")
-        st.caption("Select a serverless warehouse for executing UC functions")
-        
-        try:
-            if 'w_client' not in st.session_state:
-                from databricks.sdk import WorkspaceClient
-                st.session_state.w_client = WorkspaceClient()
-            
-            with st.spinner("Loading warehouses..."):
-                from databricks.sdk.service.sql import EndpointInfoWarehouseType
-                all_warehouses = list(st.session_state.w_client.warehouses.list())
-                serverless_warehouses = [
-                    wh for wh in all_warehouses
-                    if wh.warehouse_type == EndpointInfoWarehouseType.PRO
-                ]
-                
-                if serverless_warehouses:
-                    warehouse_options = {}
-                    current_warehouse_id = SQL_WAREHOUSE_ID
-                    
-                    for wh in serverless_warehouses:
-                        display_name = f"{wh.name} ({wh.id[:12]}...)"
-                        warehouse_options[display_name] = wh.id
-                    
-                    current_display = None
-                    for display, wh_id in warehouse_options.items():
-                        if wh_id == current_warehouse_id:
-                            current_display = display
-                            break
-                    
-                    if not current_display:
-                        current_display = f"Current ({current_warehouse_id[:12]}...)"
-                        warehouse_options[current_display] = current_warehouse_id
-                    
-                    col1, col2 = st.columns([3, 1])
-                    
-                    with col1:
-                        selected_warehouse = st.selectbox(
-                            "Choose warehouse:",
-                            options=list(warehouse_options.keys()),
-                            index=list(warehouse_options.keys()).index(current_display) if current_display in warehouse_options else 0,
-                            help="Serverless warehouses are optimized for fast execution"
-                        )
-                    
-                    with col2:
-                        if st.button("💾 Update", use_container_width=True):
-                            new_warehouse_id = warehouse_options[selected_warehouse]
-                            st.session_state['warehouse_id_override'] = new_warehouse_id
-                            st.success(f"✅ Updated: {selected_warehouse}")
-                            st.info("💡 Applies to current session")
-                    
-                    current_wh = next((wh for wh in serverless_warehouses if wh.id == warehouse_options[selected_warehouse]), None)
-                    if current_wh:
-                        st.caption(f"**Status:** {current_wh.state.value if current_wh.state else 'Unknown'}")
-                        st.caption(f"**Size:** {current_wh.cluster_size if current_wh.cluster_size else 'Default'}")
-                else:
-                    st.warning("⚠️ No serverless warehouses found")
-        
-        except Exception as e:
-            st.error(f"❌ Error: {e}")
-            st.caption(f"Current: {SQL_WAREHOUSE_ID[:20]}...")
-        
-        st.markdown("---")
-        
-        # SECTION 2: LLM TEMPERATURES
-        st.markdown("### 🌡️ LLM Parameters")
-        st.caption("Adjust temperature for planning and validation")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.markdown("#### 🧠 Planning LLM")
-            st.caption(f"**Model:** {MAIN_LLM_ENDPOINT}")
-            
-            from config import MAIN_LLM_TEMPERATURE
-            planning_temp = st.slider(
-                "Planning Temperature",
-                0.0, 1.0, MAIN_LLM_TEMPERATURE, 0.1,
-                help="Lower = focused. Higher = creative.",
-                key="planning_temp"
-            )
-            
-            if st.button("💾 Update Planning", use_container_width=True):
-                st.session_state['planning_temp_override'] = planning_temp
-                st.success(f"✅ Set to {planning_temp}")
-        
-        with col2:
-            st.markdown("#### ⚖️ Judge LLM")
-            st.caption(f"**Model:** {JUDGE_LLM_ENDPOINT}")
-            
-            from config import JUDGE_LLM_TEMPERATURE
-            judge_temp = st.slider(
-                "Judge Temperature",
-                0.0, 0.5, JUDGE_LLM_TEMPERATURE, 0.05,
-                help="Keep low for consistency",
-                key="judge_temp"
-            )
-            
-            if st.button("💾 Update Judge", use_container_width=True):
-                st.session_state['judge_temp_override'] = judge_temp
-                st.success(f"✅ Set to {judge_temp}")
-        
-        st.markdown("---")
-        
-        # SECTION 3: SYSTEM PROMPTS
-        st.markdown("### 📝 System Prompts")
-        
-        with st.expander("🧠 Planning Prompt"):
-            st.markdown("**Purpose:** Select which UC functions to call")
-            st.markdown("**Tone:** Analytical, task-focused")
-            st.markdown("**Location:** `agent.py` lines 110-147")
-        
-        with st.expander("✏️ Synthesis Prompt"):
-            st.markdown("**Purpose:** Generate personalized advice")
-            st.markdown("**Tone:** Friendly but professional")
-            st.markdown("**Location:** `agent.py` lines 433-448")
-        
-        with st.expander("⚖️ Judge Validation Prompt"):
-            st.markdown("**Purpose:** Validate response accuracy")
-            st.markdown("**Tone:** Strict, compliance-focused")
-            st.markdown("**Location:** `validation.py` lines 182-255")
-        
-        st.markdown("---")
-        
-        # SECTION 4: MEMBER PROFILE
-        st.markdown("### 👤 Member Profile Attributes")
-        st.markdown("""
-        **All 12 attributes passed to Planning & Judge:**
-        - member_id, name, first_name, age
-        - preservation_age, super_balance
-        - employment_status, marital_status
-        - dependents, other_assets, country
-        
-        ✅ Passed as dict (not string) for reliable access
-        """)
-        
-        st.markdown("---")
-        
-        # SECTION 5: SYSTEM INFO
-        st.markdown("### ℹ️ System Information")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.caption(f"**Main LLM:** {MAIN_LLM_ENDPOINT}")
-            st.caption(f"**Judge LLM:** {JUDGE_LLM_ENDPOINT}")
-        
-        with col2:
-            st.caption(f"**Warehouse:** {SQL_WAREHOUSE_ID[:20]}...")
-            st.caption(f"**Catalog:** super_advisory_demo")
-        
-        # Footer
-        st.markdown("---")
-        st.caption(f"🏦 {BRANDCONFIG['brand_name']} | Session: {st.session_state.session_id[:8]}...")
+    # Footer
+    st.markdown("---")
+    st.caption(f"🏦 {BRANDCONFIG['brand_name']} | Session: {st.session_state.session_id[:8]}...")
