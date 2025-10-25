@@ -660,6 +660,28 @@ def render_enhanced_audit_tab():
     from audit.audit_utils import get_audit_log
     from config import MLFLOW_PROD_EXPERIMENT_PATH, get_governance_table_path
     
+    # Safe calculation helpers
+    def safe_mean(series, default=0):
+        try:
+            result = pd.to_numeric(series, errors='coerce').dropna().mean()
+            return result if pd.notna(result) and result != float('inf') and result != float('-inf') else default
+        except:
+            return default
+    
+    def safe_sum(series, default=0):
+        try:
+            result = safe_sum(series, 0)
+            return result if pd.notna(result) and result != float('inf') and result != float('-inf') else default
+        except:
+            return default
+
+    
+    """Enhanced Audit Tab with 4 comprehensive views"""
+    import mlflow
+    from datetime import datetime
+    from audit.audit_utils import get_audit_log
+    from config import MLFLOW_PROD_EXPERIMENT_PATH, get_governance_table_path
+    
     # Create 4 tabs - full width
     tab1, tab2, tab3, tab4 = st.tabs([
         "🗄️ Governance Logs",
@@ -715,7 +737,7 @@ def render_enhanced_audit_tab():
                 st.metric("Queries", f"{len(df_filtered):,}")
             with col2:
                 if 'cost' in df_filtered.columns:
-                    st.metric("Cost", f"${pd.to_numeric(df_filtered['cost'], errors='coerce').sum():.2f}")
+                    st.metric("Cost", f"${safe_sum(df_filtered['cost'], 0):.2f}")
                 else:
                     st.metric("Cost", "N/A")
             with col3:
@@ -726,7 +748,7 @@ def render_enhanced_audit_tab():
                     st.metric("Pass Rate", "N/A")
             with col4:
                 if 'total_time_seconds' in df_filtered.columns:
-                    st.metric("Avg Time", f"{pd.to_numeric(df_filtered['total_time_seconds'], errors='coerce').mean():.2f}s")
+                    st.metric("Avg Time", f"{safe_mean(df_filtered['total_time_seconds'], 0):.2f}s")
                 else:
                     st.metric("Avg Time", "N/A")
             
@@ -796,17 +818,17 @@ def render_enhanced_audit_tab():
                 st.metric("Runs", f"{len(runs_df):,}")
             with col2:
                 if 'metrics.cost_usd' in runs_df.columns:
-                    st.metric("Cost", f"${pd.to_numeric(runs_df['metrics.cost_usd'], errors='coerce').sum():.2f}")
+                    st.metric("Cost", f"${safe_sum(runs_df['metrics.cost_usd'], 0):.2f}")
                 else:
                     st.metric("Cost", "Not logged")
             with col3:
                 if 'metrics.total_time_seconds' in runs_df.columns:
-                    st.metric("Avg Time", f"{pd.to_numeric(runs_df['metrics.total_time_seconds'], errors='coerce').mean():.2f}s")
+                    st.metric("Avg Time", f"{safe_mean(runs_df['metrics.total_time_seconds'], 0):.2f}s")
                 else:
                     st.metric("Avg Time", "N/A")
             with col4:
                 if 'metrics.tools_called' in runs_df.columns:
-                    st.metric("Avg Tools", f"{pd.to_numeric(runs_df['metrics.tools_called'], errors='coerce').mean():.1f}")
+                    st.metric("Avg Tools", f"{safe_mean(runs_df['metrics.tools_called'], 0):.1f}")
                 else:
                     st.metric("Avg Tools", "N/A")
             
@@ -888,19 +910,19 @@ def render_enhanced_audit_tab():
                 for col_name in ['metrics.total_tokens', 'metrics.token_count']:
                     if col_name in runs_df.columns:
                         with col1:
-                            st.metric("Avg Total", f"{pd.to_numeric(runs_df[col_name], errors='coerce').mean():,.0f}")
+                            st.metric("Avg Total", f"{safe_mean(runs_df[col_name], 0):,.0f}")
                         break
                 
                 for col_name in ['metrics.input_tokens', 'metrics.prompt_tokens']:
                     if col_name in runs_df.columns:
                         with col2:
-                            st.metric("Avg Input", f"{pd.to_numeric(runs_df[col_name], errors='coerce').mean():,.0f}")
+                            st.metric("Avg Input", f"{safe_mean(runs_df[col_name], 0):,.0f}")
                         break
                 
                 for col_name in ['metrics.output_tokens', 'metrics.completion_tokens']:
                     if col_name in runs_df.columns:
                         with col3:
-                            st.metric("Avg Output", f"{pd.to_numeric(runs_df[col_name], errors='coerce').mean():,.0f}")
+                            st.metric("Avg Output", f"{safe_mean(runs_df[col_name], 0):,.0f}")
                         break
             else:
                 st.warning("No token metrics in MLflow")
@@ -922,11 +944,11 @@ def render_enhanced_audit_tab():
             
             col1, col2, col3 = st.columns(3)
             with col1:
-                st.metric("Avg", f"{gov_df['query_length'].mean():.0f} chars")
+                st.metric("Avg", f"{safe_mean(gov_df['query_length'], 0):.0f} chars")
             with col2:
-                st.metric("Min", f"{gov_df['query_length'].min():.0f} chars")
+                st.metric("Min", f"{(gov_df['query_length'].min() if len(gov_df['query_length'].dropna()) > 0 else 0):.0f} chars")
             with col3:
-                st.metric("Max", f"{gov_df['query_length'].max():.0f} chars")
+                st.metric("Max", f"{(gov_df['query_length'].max() if len(gov_df['query_length'].dropna()) > 0 else 0):.0f} chars")
     
     # TAB 4: COST ANALYSIS
     with tab4:
@@ -949,17 +971,17 @@ def render_enhanced_audit_tab():
                 
                 col1, col2, col3, col4 = st.columns(4)
                 
-                total_cost = df_with_cost['cost'].sum()
-                avg_cost = df_with_cost['cost'].mean()
+                total_cost = safe_sum(df_with_cost['cost'], 0)
+                avg_cost = safe_mean(df_with_cost['cost'], 0)
                 
                 with col1:
                     st.metric("Total", f"${total_cost:.2f}")
                 with col2:
                     st.metric("Avg/Query", f"${avg_cost:.4f}")
                 with col3:
-                    st.metric("Min", f"${df_with_cost['cost'].min():.4f}")
+                    st.metric("Min", f"${(df_with_cost['cost'].min() if len(df_with_cost['cost'].dropna()) > 0 else 0):.4f}")
                 with col4:
-                    st.metric("Max", f"${df_with_cost['cost'].max():.4f}")
+                    st.metric("Max", f"${(df_with_cost['cost'].max() if len(df_with_cost['cost'].dropna()) > 0 else 0):.4f}")
                 
                 if 'country' in df_with_cost.columns:
                     st.markdown("---")

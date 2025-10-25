@@ -1,4 +1,4 @@
-# agent.py - FIXED VERSION (MLflow tracing removed, token_breakdown fixed)
+# agent.py - WITH INTELLIGENT TOOL SELECTION
 
 """
 Multi-Country Retirement Advisor Agent with Intelligent Tool Selection
@@ -8,7 +8,6 @@ Multi-Country Retirement Advisor Agent with Intelligent Tool Selection
 ✅ Configurable validation modes: llm_judge, hybrid, deterministic
 ✅ Logs to Unity Catalog and MLflow
 ✅ Implements retry logic with judge feedback
-✅ FIXED: MLflow tracing removed, token_breakdown parameter added
 
 KEY IMPROVEMENT: Reduces tool calls by 60-70% through intelligent planning
 """
@@ -157,13 +156,13 @@ Respond with ONLY valid JSON matching this format:
   "withdrawal_amount": 50000,
   "reasoning": "Brief explanation"
 }}"""
-        
+
         try:
             planning_messages = [{"role": "user", "content": planning_prompt}]
             planning_response, planning_time, plan_in, plan_out = self.call_claude(
                 planning_messages,
                 max_tokens=300,
-                temperature=0.0
+                temperature=0.0  # Deterministic for planning
             )
             
             # Parse JSON response
@@ -183,7 +182,7 @@ Respond with ONLY valid JSON matching this format:
             # Add token tracking to plan
             plan["tokens"] = {"input": plan_in, "output": plan_out}
             
-            print(f"�� Planning complete ({planning_time:.2f}s):")
+            print(f"🧠 Planning complete ({planning_time:.2f}s):")
             print(f"   Tools needed: {', '.join(plan['tools_needed'])}")
             print(f"   Withdrawal: ${plan['withdrawal_amount']:,}")
             print(f"   Reasoning: {plan['reasoning']}")
@@ -193,6 +192,7 @@ Respond with ONLY valid JSON matching this format:
         except json.JSONDecodeError as e:
             print(f"⚠️  Planning JSON parse error: {e}")
             print(f"   Response: {planning_response[:200]}")
+            # Fallback: use all tools
             return {
                 "tools_needed": ["tax", "benefit", "projection"],
                 "withdrawal_amount": 50000,
@@ -200,6 +200,7 @@ Respond with ONLY valid JSON matching this format:
             }
         except Exception as e:
             print(f"⚠️  Planning error: {e}")
+            # Fallback: use all tools
             return {
                 "tools_needed": ["tax", "benefit", "projection"],
                 "withdrawal_amount": 50000,
@@ -208,10 +209,11 @@ Respond with ONLY valid JSON matching this format:
     
     def _log_query_audit(self, member_id, user_query, response_text, total_time,
                          tools_count, validation_mode="llm_judge", validation_attempts=1,
-                         validation_result=None, cost=0.0, token_breakdown=None):
+                         validation_result=None, cost=0.0, token_breakdown=None,
+                         plan=None, tools_called=None):
         """
-        ✅ FIXED: Added token_breakdown parameter
         Log query to BOTH Unity Catalog AND MLflow
+        ✅ FIXED: Added missing parameters
         """
         # 1. Log to Unity Catalog
         try:
@@ -241,18 +243,6 @@ Respond with ONLY valid JSON matching this format:
             import mlflow
             from config import MLFLOW_PROD_EXPERIMENT_PATH
             
-            # ✅ FIX: End any stuck runs before starting new one
-            if mlflow.active_run() is not None:
-                mlflow.end_run()
-            
-            # ✅ FIX: Set default token_breakdown if not provided
-            if not token_breakdown:
-                token_breakdown = {
-                    'planning': {'input': 0, 'output': 0},
-                    'synthesis': {'input': 0, 'output': 0},
-                    'validation': {'input': 0, 'output': 0}
-                }
-            
             if MLFLOW_PROD_EXPERIMENT_PATH:
                 mlflow.set_tracking_uri("databricks")
                 mlflow.set_experiment(MLFLOW_PROD_EXPERIMENT_PATH)
@@ -264,31 +254,37 @@ Respond with ONLY valid JSON matching this format:
                         "validation_mode": validation_mode
                     })
                     
-                    # Calculate total tokens
-                    total_input = (token_breakdown['planning']['input'] +
-                                 token_breakdown['synthesis']['input'] +
-                                 token_breakdown['validation']['input'])
-                    total_output = (token_breakdown['planning']['output'] +
-                                  token_breakdown['synthesis']['output'] +
-                                  token_breakdown['validation']['output'])
-                    
-                    print(f"total output tokens: {total_output}")
-                    print(f"total input tokens: {total_input}")
-                    
-                    mlflow.log_metrics({
-                        "total_time_seconds": round(total_time, 2),
-                        "tools_called": tools_count,
-                        "validation_attempts": validation_attempts,
-                        "response_length": len(response_text),
-                        "cost_usd": cost,
-                        # Token metrics
-                        "input_tokens": total_input,
-                        "output_tokens": total_output,
-                        "total_tokens": total_input + total_output,
-                        "planning_tokens": token_breakdown['planning']['input'] + token_breakdown['planning']['output'],
-                        "synthesis_tokens": token_breakdown['synthesis']['input'] + token_breakdown['synthesis']['output'],
-                        "validation_tokens": token_breakdown['validation']['input'] + token_breakdown['validation']['output']
-                    })
+                    # ✅ FIX: Only calculate if token_breakdown provided
+                    if token_breakdown:
+                        total_input = (token_breakdown['planning']['input'] +
+                                     token_breakdown['synthesis']['input'] +
+                                     token_breakdown['validation']['input'])
+                        total_output = (token_breakdown['planning']['output'] +
+                                      token_breakdown['synthesis']['output'] +
+                                      token_breakdown['validation']['output'])
+                        
+                        mlflow.log_metrics({
+                            "total_time_seconds": round(total_time, 2),
+                            "tools_called": tools_count,
+                            "validation_attempts": validation_attempts,
+                            "response_length": len(response_text),
+                            "cost_usd": cost,
+                            "input_tokens": total_input,
+                            "output_tokens": total_output,
+                            "total_tokens": total_input + total_output,
+                            "planning_tokens": token_breakdown['planning']['input'] + token_breakdown['planning']['output'],
+                            "synthesis_tokens": token_breakdown['synthesis']['input'] + token_breakdown['synthesis']['output'],
+                            "validation_tokens": token_breakdown['validation']['input'] + token_breakdown['validation']['output']
+                        })
+                    else:
+                        # Fallback if token_breakdown not provided
+                        mlflow.log_metrics({
+                            "total_time_seconds": round(total_time, 2),
+                            "tools_called": tools_count,
+                            "validation_attempts": validation_attempts,
+                            "response_length": len(response_text),
+                            "cost_usd": cost
+                        })
                     
                     if validation_result:
                         mlflow.log_metrics({
@@ -300,8 +296,30 @@ Respond with ONLY valid JSON matching this format:
         except Exception as e:
             print(f"⚠️  MLflow logging failed: {e}")
         
-        # ✅ REMOVED: MLflow tracing section completely removed
-        # (No more mlflow.tracing import or log_trace calls)
+        # ✅ FIX: Replace invalid log_trace with artifact logging
+        try:
+            import mlflow
+            import tempfile
+            
+            # Use MLflow's standard artifact logging instead of log_trace
+            if token_breakdown and plan and tools_called:
+                trace_data = {
+                    "planning": plan,
+                    "token_usage": token_breakdown,
+                    "executed_tools": tools_called,
+                    "validation": validation_result if validation_result else {}
+                }
+                
+                # Log as artifact instead
+                with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+                    json.dump(trace_data, f, indent=2, default=str)
+                    temp_path = f.name
+                
+                mlflow.log_artifact(temp_path, "trace_data")
+                print("✓ MLflow trace data logged as artifact")
+                
+        except Exception as trace_error:
+            print(f"⚠️  Failed to log MLflow trace: {trace_error}")
     
     def query(self, user_query, member_id, anonymize=True, validation_mode="llm_judge",
               max_validation_attempts=2, status_callback=None):
@@ -364,7 +382,7 @@ Respond with ONLY valid JSON matching this format:
             member_token = None
             print(f"✅ Using real name: '{real_name}'")
         
-        # ✅ STEP 0.5 - Planning Phase
+        # ✅ NEW: STEP 0.5 - Planning Phase
         print("\n" + "="*60)
         print("🧠 PLANNING PHASE: Selecting tools...")
         print("="*60)
@@ -374,14 +392,14 @@ Respond with ONLY valid JSON matching this format:
         withdrawal_amount = plan["withdrawal_amount"]
         planning_reasoning = plan["reasoning"]
         
-        # Initialize token tracking
+        # ✅ NEW: Initialize token tracking
         token_breakdown = {
             'planning': plan.get('tokens', {'input': 0, 'output': 0}),
             'synthesis': {'input': 0, 'output': 0},
             'validation': {'input': 0, 'output': 0}
         }
         
-        print(f"\n📋 Plan: Call {len(tools_to_call)}/3 tools")
+        print(f"\n📋 Plan: Call {len(tools_to_call)}/{3} tools")
         print(f"   Selected: {', '.join(tools_to_call)}")
         print(f"   Savings: {(1 - len(tools_to_call)/3)*100:.0f}% reduction")
         
@@ -394,6 +412,7 @@ Respond with ONLY valid JSON matching this format:
         print(f"🛠️  TOOL EXECUTION: Calling {len(tools_to_call)} functions")
         print("="*60)
         
+        # ✅ NEW: Call only selected tools individually
         tool_results = {}
         tools_called = []
         all_citations = []
@@ -435,7 +454,6 @@ Respond with ONLY valid JSON matching this format:
         
         # STEP 2: Multi-stage synthesis with validation retry loop
         regulations = COUNTRY_REGULATIONS.get(self.country, {})
-        
         context = f"""MEMBER PROFILE:
 Name: {profile['name']}
 First Name: {member_first_name}
@@ -455,11 +473,12 @@ REGULATORY CONTEXT:
 UC FUNCTION RESULTS ({len(tool_results)} calculations - intelligently selected):
 Planning Decision: {planning_reasoning}
 Tools Called: {', '.join(tools_to_call)}
+
 {json.dumps(tool_results, indent=2, default=str)}
 
 USER QUESTION:
 {user_query}"""
-        
+
         if status_callback:
             status_callback("synthesis_start", None)
         
@@ -495,7 +514,7 @@ Note: We only called the tools necessary to answer this specific question ({len(
 If the user's question requires information from tools we didn't call, politely suggest they ask a more specific question.
 
 YOUR RESPONSE:"""
-            
+
             # Add validation feedback if retry
             if validation_feedback:
                 base_prompt += f"""
@@ -504,14 +523,14 @@ YOUR RESPONSE:"""
 {validation_feedback}
 
 Please correct the issues and regenerate your response."""
-            
+
             messages = [{"role": "user", "content": base_prompt}]
             
             # Call LLM
             try:
                 answer, synth_duration, synth_in, synth_out = self.call_claude(messages, max_tokens=2000)
                 
-                # Track synthesis tokens (accumulate if multiple attempts)
+                # ✅ NEW: Track synthesis tokens (accumulate if multiple attempts)
                 if attempt == 1:
                     token_breakdown['synthesis']['input'] = synth_in
                     token_breakdown['synthesis']['output'] = synth_out
@@ -519,7 +538,7 @@ Please correct the issues and regenerate your response."""
                     # Accumulate tokens from retries
                     token_breakdown['synthesis']['input'] += synth_in
                     token_breakdown['synthesis']['output'] += synth_out
-                    
+            
             except Exception as e:
                 print(f"❌ Synthesis error: {e}")
                 return (
@@ -547,7 +566,7 @@ Please correct the issues and regenerate your response."""
                     context=context
                 )
                 
-                # Track validation tokens (accumulate if multiple attempts)
+                # ✅ NEW: Track validation tokens (accumulate if multiple attempts)
                 judge_in = validation_result.get('input_tokens', 0)
                 judge_out = validation_result.get('output_tokens', 0)
                 
@@ -569,28 +588,27 @@ Please correct the issues and regenerate your response."""
                     validation_feedback = "Please fix these issues:\n" + "\n".join([
                         f"- {v}" for v in violations
                     ])
-            else:
-                validation_passed = True
+                else:
+                    validation_passed = True
             
-            if validation_mode == "deterministic":
+            elif validation_mode == "deterministic":
                 det_validator = DeterministicValidator()
                 validation_result = det_validator.validate(answer, user_query, context)
                 validation_passed = validation_result['passed']
-            elif validation_mode not in ["llm_judge", "deterministic"]:
-                # hybrid or skip
+            else:  # hybrid or skip
                 validation_passed = True
                 validation_result = {"passed": True, "confidence": 1.0, "verdict": "Pass"}
         
         total_time = time.time() - overall_start
         
-        # Calculate cost using calculator
+        # ✅ NEW: Calculate cost using our calculator
         from cost_utils import calculate_query_costs
         cost_breakdown = calculate_query_costs(token_breakdown)
         total_cost = cost_breakdown['total']
         
         # Print token and cost breakdown
         print(f"\n{'='*60}")
-        print(f"�� TOKEN & COST BREAKDOWN")
+        print(f"📊 TOKEN & COST BREAKDOWN")
         print(f"{'='*60}")
         
         # Planning tokens
@@ -627,7 +645,7 @@ Please correct the issues and regenerate your response."""
         print(f"   Daily:   {queries_per_day:>6.0f} queries → ${queries_per_day * total_cost:>7.2f}")
         print(f"   Monthly: {queries_per_month:>6.0f} queries → ${queries_per_month * total_cost:>7.2f}")
         
-        # ✅ FIX: Pass token_breakdown to logging
+        # ✅ FIXED: Log to audit with all required parameters
         self._log_query_audit(
             member_id=member_id,
             user_query=user_query,
@@ -638,7 +656,9 @@ Please correct the issues and regenerate your response."""
             validation_attempts=attempt,
             validation_result=validation_result,
             cost=total_cost,
-            token_breakdown=token_breakdown  # ✅ NOW PASSED!
+            token_breakdown=token_breakdown,  # ✅ NOW PASSED
+            plan=plan,  # ✅ NOW PASSED
+            tools_called=tools_called  # ✅ NOW PASSED
         )
         
         print(f"\n{'='*60}")
@@ -671,4 +691,3 @@ Please correct the issues and regenerate your response."""
             None,
             tools_called
         )
-

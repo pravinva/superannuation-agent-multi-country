@@ -324,55 +324,90 @@ def _call_australia_tool(tool_id, member_id, profile, withdrawal_amount, warehou
     
     elif tool_id == "benefit":
         # Centrelink Age Pension
-        query = f"""
-            SELECT super_advisory_demo.pension_calculators.au_check_pension_impact(
-                '{member_id}',
-                {profile['age']},
-                '{profile['marital_status']}',
-                {profile['super_balance']},
-                {profile['other_assets']},
-                {withdrawal_amount}
-            ) as result
-        """
         
-        result_raw = execute_query(warehouse_id, query)
-        duration = time.time() - start_time
-        
-        if result_raw and len(result_raw) > 0:
+        # Validate withdrawal amount
+        if withdrawal_amount >= profile['super_balance']:
             return {
                 "tool_name": "Centrelink Age Pension Calculator",
                 "tool_id": "benefit",
-                "uc_function": "super_advisory_demo.pension_calculators.au_check_pension_impact",
-                "authority": "Department of Social Services",
-                "calculation": result_raw[0][0],
-                "citations": get_citations(['AU-PENSION-001'], warehouse_id),
-                "duration": round(duration, 2)
+                "calculation": {
+                    "member_id": member_id,
+                    "pension_status": "Complete withdrawal - no super remaining",
+                    "after_withdrawal_balance": 0.0,
+                    "annual_super_income": 0.0
+                },
+                "duration": 0.01
+            }
+        
+        try:
+            query = f"""
+                SELECT super_advisory_demo.pension_calculators.au_check_pension_impact(
+                    '{member_id}',
+                    {profile['age']},
+                    '{profile['marital_status']}',
+                    {profile['super_balance']},
+                    {profile['other_assets']},
+                    {withdrawal_amount}
+                ) as result
+            """
+            
+            result_raw = execute_query(warehouse_id, query)
+            duration = time.time() - start_time
+            
+            if result_raw and len(result_raw) > 0:
+                return {
+                    "tool_name": "Centrelink Age Pension Calculator",
+                    "tool_id": "benefit",
+                    "uc_function": "super_advisory_demo.pension_calculators.au_check_pension_impact",
+                    "authority": "Department of Social Services",
+                    "calculation": result_raw[0][0],
+                    "citations": get_citations(['AU-PENSION-001'], warehouse_id),
+                    "duration": round(duration, 2)
+                }
+        except Exception as e:
+            print(f"⚠️  Error in AU pension calculation: {e}")
+            return {
+                "tool_name": "Centrelink Age Pension Calculator",
+                "tool_id": "benefit",
+                "error": str(e),
+                "calculation": {"pension_status": "Calculation error"},
+                "duration": time.time() - start_time
             }
     
     elif tool_id == "projection":
         # Retirement Projection
-        query = f"""
-            SELECT super_advisory_demo.pension_calculators.au_project_balance(
-                '{member_id}',
-                {profile['age']},
-                {profile['preservation_age']},
-                {profile['super_balance']},
-                20
-            ) as result
-        """
-        
-        result_raw = execute_query(warehouse_id, query)
-        duration = time.time() - start_time
-        
-        if result_raw and len(result_raw) > 0:
+        try:
+            query = f"""
+                SELECT super_advisory_demo.pension_calculators.au_project_balance(
+                    '{member_id}',
+                    {profile['age']},
+                    {profile['preservation_age']},
+                    {profile['super_balance']},
+                    20
+                ) as result
+            """
+            
+            result_raw = execute_query(warehouse_id, query)
+            duration = time.time() - start_time
+            
+            if result_raw and len(result_raw) > 0:
+                return {
+                    "tool_name": "Superannuation Projection Engine",
+                    "tool_id": "projection",
+                    "uc_function": "super_advisory_demo.pension_calculators.au_project_balance",
+                    "authority": "ASFA / APRA",
+                    "calculation": result_raw[0][0],
+                    "citations": get_citations(['AU-STANDARD-001'], warehouse_id),
+                    "duration": round(duration, 2)
+                }
+        except Exception as e:
+            print(f"⚠️  Error in AU projection: {e}")
             return {
                 "tool_name": "Superannuation Projection Engine",
                 "tool_id": "projection",
-                "uc_function": "super_advisory_demo.pension_calculators.au_project_balance",
-                "authority": "ASFA / APRA",
-                "calculation": result_raw[0][0],
-                "citations": get_citations(['AU-STANDARD-001'], warehouse_id),
-                "duration": round(duration, 2)
+                "error": str(e),
+                "calculation": {"note": f"Projection error: {str(e)}"},
+                "duration": time.time() - start_time
             }
     
     return {"error": f"Unknown tool_id: {tool_id}"}
