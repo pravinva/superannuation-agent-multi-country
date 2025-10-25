@@ -259,12 +259,28 @@ Respond with ONLY valid JSON matching this format:
                         "validation_mode": validation_mode
                     })
 
+                    # Calculate total tokens
+                    total_input = (token_breakdown['planning']['input'] + 
+                                   token_breakdown['synthesis']['input'] + 
+                                   token_breakdown['validation']['input'])
+                    total_output = (token_breakdown['planning']['output'] + 
+                                    token_breakdown['synthesis']['output'] + 
+                                    token_breakdown['validation']['output'])
+                    print (f"total output tokens: {total_output}")
+                    print (f"total input tokens: {total_input}")           
                     mlflow.log_metrics({
                         "total_time_seconds": round(total_time, 2),
                         "tools_called": tools_count,
                         "validation_attempts": validation_attempts,
                         "response_length": len(response_text),
-                        "cost_usd": cost  # ✅ NEW: Log cost
+                        "cost_usd": cost,
+                        # ✅ NEW: Log token metrics
+                        "input_tokens": total_input,
+                        "output_tokens": total_output,
+                        "total_tokens": total_input + total_output,
+                        "planning_tokens": token_breakdown['planning']['input'] + token_breakdown['planning']['output'],
+                        "synthesis_tokens": token_breakdown['synthesis']['input'] + token_breakdown['synthesis']['output'],
+                        "validation_tokens": token_breakdown['validation']['input'] + token_breakdown['validation']['output']
                     })
 
                     if validation_result:

@@ -15,7 +15,6 @@ import uuid
 import os
 import pandas as pd
 import numpy as np
-import mlflow
 from config import (
     BRANDCONFIG, 
     MLFLOW_PROD_EXPERIMENT_PATH, 
@@ -40,23 +39,6 @@ from agent_processor import agent_query
 from data_utils import get_members_by_country
 from country_content import COUNTRY_PROMPTS, COUNTRY_DISCLAIMERS, POST_ANSWER_DISCLAIMERS
 
-# ============================================================================
-# MLFLOW CONFIGURATION
-# ============================================================================
-
-def initialize_mlflow():
-    """Initialize MLflow tracking"""
-    try:
-        if MLFLOW_PROD_EXPERIMENT_PATH:
-            mlflow.set_experiment(MLFLOW_PROD_EXPERIMENT_PATH)
-            print(f"✅ MLflow experiment set: {MLFLOW_PROD_EXPERIMENT_PATH}")
-        else:
-            print("⚠️ MLFLOW_PROD_EXPERIMENT_PATH not configured")
-    except Exception as e:
-        print(f"❌ MLflow initialization error: {e}")
-
-# Initialize MLflow on startup
-initialize_mlflow()
 
 # ============================================================================
 # SAFE DATAFRAME UTILITY FUNCTIONS
@@ -181,8 +163,6 @@ if "members_list" not in st.session_state:
     st.session_state.members_list = []
 if "current_country_code" not in st.session_state:
     st.session_state.current_country_code = None
-if "mlflow_run_id" not in st.session_state:
-    st.session_state.mlflow_run_id = None
 
 # Sidebar
 if os.path.exists("logo.png"):
@@ -205,11 +185,6 @@ st.session_state.show_logs = st.sidebar.checkbox(
     key="log_toggle"
 )
 
-st.sidebar.markdown("---")
-st.sidebar.caption(f"Session: {st.session_state.session_id[:8]}...")
-st.sidebar.caption(f"User: {st.session_state.user_id}")
-if st.session_state.mlflow_run_id:
-    st.sidebar.caption(f"MLflow Run: {st.session_state.mlflow_run_id[:8]}...")
 
 st.session_state.page = page
 
@@ -392,23 +367,6 @@ if page == "Advisory":
                 # ✅ Initialize live progress tracker FIRST
                 initialize_live_progress_tracker()
                 
-                # Start MLflow run
-                try:
-                    mlflow_run = mlflow.start_run(
-                        run_name=f"query_{st.session_state.session_id[:8]}"
-                    )
-                    st.session_state.mlflow_run_id = mlflow_run.info.run_id
-                    
-                    # Log parameters
-                    mlflow.log_param("country", country_display)
-                    mlflow.log_param("validation_mode", st.session_state.validation_mode)
-                    mlflow.log_param("member_id", member.get('member_id'))
-                    mlflow.log_param("session_id", st.session_state.session_id)
-                    
-                except Exception as e:
-                    st.warning(f"MLflow tracking unavailable: {e}")
-                    mlflow_run = None
-                
                 with st.spinner("🔄 Processing your request..."):
                     if not st.session_state.show_logs:
                         progress_placeholder = st.empty()
@@ -439,24 +397,6 @@ if page == "Advisory":
                         
                         st.session_state.agent_output = agent_output
                         
-                        # Log to MLflow
-                        if mlflow_run:
-                            try:
-                                # Log metrics
-                                mlflow.log_metric("validation_attempts", 1)
-                                mlflow.log_param("judge_verdict", judge_verdict)
-                                mlflow.log_metric("pass", 1 if judge_verdict == "Pass" else 0)
-                                
-                                # Log query and response
-                                mlflow.log_text(question, "query.txt")
-                                mlflow.log_text(answer, "response.txt")
-                                
-                                # End run
-                                mlflow.end_run()
-                                
-                            except Exception as e:
-                                st.warning(f"MLflow logging error: {e}")
-                        
                         if not st.session_state.show_logs:
                             progress_placeholder.empty()
                     
@@ -466,8 +406,6 @@ if page == "Advisory":
                         st.code(traceback.format_exc())
                         st.session_state.agent_output = None
                         
-                        if mlflow_run:
-                            mlflow.end_run(status="FAILED")
                         
                         if not st.session_state.show_logs:
                             progress_placeholder.empty()

@@ -1,18 +1,21 @@
-# agent.py - WITH INTELLIGENT TOOL SELECTION
+# agent.py - FIXED VERSION (MLflow tracing removed, token_breakdown fixed)
+
 """
 Multi-Country Retirement Advisor Agent with Intelligent Tool Selection
+
 ✅ NEW: LLM Planning Phase - Only calls needed tools
 ✅ Supports 4 countries: Australia, USA, UK, India
 ✅ Configurable validation modes: llm_judge, hybrid, deterministic
 ✅ Logs to Unity Catalog and MLflow
 ✅ Implements retry logic with judge feedback
+✅ FIXED: MLflow tracing removed, token_breakdown parameter added
 
 KEY IMPROVEMENT: Reduces tool calls by 60-70% through intelligent planning
 """
 
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.service.serving import ChatMessage, ChatMessageRole
-from tools import call_individual_tool, get_all_tools_metadata  # UPDATED IMPORT
+from tools import call_individual_tool, get_all_tools_metadata
 from validation import LLMJudgeValidator, DeterministicValidator
 from country_content import COUNTRY_PROMPTS, COUNTRY_REGULATIONS, POST_ANSWER_DISCLAIMERS
 from config import MAIN_LLM_ENDPOINT, JUDGE_LLM_ENDPOINT, MAIN_LLM_TEMPERATURE, SQL_WAREHOUSE_ID
@@ -22,10 +25,9 @@ import time
 import uuid
 from datetime import datetime
 
-
 class MultiCountryAdvisorAgent:
     """Multi-country retirement advisor with intelligent tool selection"""
-
+    
     def __init__(self, country="Australia"):
         self.w = WorkspaceClient()
         self.country = country
@@ -33,22 +35,20 @@ class MultiCountryAdvisorAgent:
         self.judge_endpoint = JUDGE_LLM_ENDPOINT
         self.session_id = str(uuid.uuid4())
         self.warehouse_id = SQL_WAREHOUSE_ID
-
         self.validator = LLMJudgeValidator(judge_endpoint=self.judge_endpoint)
-
+        
         print(f"✓ Multi-Country Advisor Agent initialized (Intelligent Mode)")
         print(f"  Country: {country}")
         print(f"  Main LLM: {self.main_endpoint}")
         print(f"  Judge LLM: {self.judge_endpoint}")
         print(f"  Warehouse: {self.warehouse_id}")
-
+    
     def call_claude(self, messages, max_tokens=2000, temperature=None, endpoint=None):
         """Call Claude endpoint via Databricks SDK - WITH TOKEN TRACKING"""
         start_time = time.time()
-
         temp = temperature if temperature is not None else MAIN_LLM_TEMPERATURE
         endpoint_name = endpoint if endpoint else self.main_endpoint
-
+        
         chat_messages = []
         for msg in messages:
             if isinstance(msg, dict):
@@ -61,18 +61,18 @@ class MultiCountryAdvisorAgent:
                 chat_messages.append(ChatMessage(role=role, content=msg['content']))
             else:
                 chat_messages.append(msg)
-
+        
         response = self.w.serving_endpoints.query(
             name=endpoint_name,
             messages=chat_messages,
             max_tokens=max_tokens,
             temperature=temp
         )
-
+        
         answer = response.choices[0].message.content
         elapsed = time.time() - start_time
-
-        # ✅ NEW: Extract token usage from response
+        
+        # Extract token usage from response
         usage = getattr(response, 'usage', None)
         if usage:
             input_tokens = getattr(usage, 'prompt_tokens', 0)
@@ -85,9 +85,9 @@ class MultiCountryAdvisorAgent:
         
         print(f"⏱️  Claude call: {elapsed:.2f}s")
         print(f"📊 Tokens: {input_tokens:,} input + {output_tokens:,} output = {total_tokens:,} total")
-
+        
         return answer, elapsed, input_tokens, output_tokens
-
+    
     def _convert_to_int(self, value, default=0):
         """Safely convert value to integer"""
         if value is None:
@@ -96,7 +96,7 @@ class MultiCountryAdvisorAgent:
             return int(value)
         except (ValueError, TypeError):
             return default
-
+    
     def _plan_tool_selection(self, user_query, member_profile):
         """
         ✅ NEW: LLM Planning Phase - Decide which tools to call
@@ -104,18 +104,16 @@ class MultiCountryAdvisorAgent:
         Args:
             user_query: User's question
             member_profile: Member data
-        
+            
         Returns:
             dict: {
                 "tools_needed": ["tax", "benefit", "projection"],
                 "reasoning": "explanation",
-                "withdrawal_amount": 50000  # extracted if mentioned
+                "withdrawal_amount": 50000
             }
         """
-        
         # Get available tools for this country
         tools_metadata = get_all_tools_metadata(self.country)
-        
         tools_description = "\n".join([
             f"{i+1}. **{tool['id']}** - {tool['name']}: {tool['description']}"
             for i, tool in enumerate(tools_metadata)
@@ -155,17 +153,17 @@ Query: "What's my Age Pension eligibility?"
 
 Respond with ONLY valid JSON matching this format:
 {{
-    "tools_needed": ["tax"],
-    "withdrawal_amount": 50000,
-    "reasoning": "Brief explanation"
+  "tools_needed": ["tax"],
+  "withdrawal_amount": 50000,
+  "reasoning": "Brief explanation"
 }}"""
-
+        
         try:
             planning_messages = [{"role": "user", "content": planning_prompt}]
             planning_response, planning_time, plan_in, plan_out = self.call_claude(
-                planning_messages, 
+                planning_messages,
                 max_tokens=300,
-                temperature=0.0  # Deterministic for planning
+                temperature=0.0
             )
             
             # Parse JSON response
@@ -182,10 +180,10 @@ Respond with ONLY valid JSON matching this format:
             if "reasoning" not in plan:
                 plan["reasoning"] = "Using selected tools"
             
-            # ✅ NEW: Add token tracking to plan
+            # Add token tracking to plan
             plan["tokens"] = {"input": plan_in, "output": plan_out}
             
-            print(f"🧠 Planning complete ({planning_time:.2f}s):")
+            print(f"�� Planning complete ({planning_time:.2f}s):")
             print(f"   Tools needed: {', '.join(plan['tools_needed'])}")
             print(f"   Withdrawal: ${plan['withdrawal_amount']:,}")
             print(f"   Reasoning: {plan['reasoning']}")
@@ -195,7 +193,6 @@ Respond with ONLY valid JSON matching this format:
         except json.JSONDecodeError as e:
             print(f"⚠️  Planning JSON parse error: {e}")
             print(f"   Response: {planning_response[:200]}")
-            # Fallback: use all tools
             return {
                 "tools_needed": ["tax", "benefit", "projection"],
                 "withdrawal_amount": 50000,
@@ -203,26 +200,24 @@ Respond with ONLY valid JSON matching this format:
             }
         except Exception as e:
             print(f"⚠️  Planning error: {e}")
-            # Fallback: use all tools
             return {
                 "tools_needed": ["tax", "benefit", "projection"],
                 "withdrawal_amount": 50000,
                 "reasoning": "Fallback to all tools (planning failed)"
             }
-
-    def _log_query_audit(self, member_id, user_query, response_text, total_time, 
+    
+    def _log_query_audit(self, member_id, user_query, response_text, total_time,
                          tools_count, validation_mode="llm_judge", validation_attempts=1,
-                         validation_result=None, cost=0.0):
+                         validation_result=None, cost=0.0, token_breakdown=None):
         """
+        ✅ FIXED: Added token_breakdown parameter
         Log query to BOTH Unity Catalog AND MLflow
         """
-
         # 1. Log to Unity Catalog
         try:
             from audit.audit_utils import log_query_event
-
             truncated = response_text[:15000] if len(response_text) > 15000 else response_text
-
+            
             log_query_event(
                 user_id=member_id,
                 session_id=self.session_id,
@@ -235,46 +230,58 @@ Respond with ONLY valid JSON matching this format:
                 validation_attempts=validation_attempts,
                 judge_verdict=validation_result.get('verdict') if validation_result else None,
                 judge_confidence=validation_result.get('confidence') if validation_result else None,
-                cost=cost  # ✅ NOW PASS ACTUAL COST!
+                cost=cost
             )
-
             print(f"✓ Audit logged to Unity Catalog")
-
         except Exception as e:
             print(f"⚠️  Unity Catalog logging failed: {e}")
-
+        
         # 2. Log to MLflow (if experiment path configured)
         try:
             import mlflow
             from config import MLFLOW_PROD_EXPERIMENT_PATH
-
+            
+            # ✅ FIX: End any stuck runs before starting new one
+            if mlflow.active_run() is not None:
+                mlflow.end_run()
+            
+            # ✅ FIX: Set default token_breakdown if not provided
+            if not token_breakdown:
+                token_breakdown = {
+                    'planning': {'input': 0, 'output': 0},
+                    'synthesis': {'input': 0, 'output': 0},
+                    'validation': {'input': 0, 'output': 0}
+                }
+            
             if MLFLOW_PROD_EXPERIMENT_PATH:
                 mlflow.set_tracking_uri("databricks")
                 mlflow.set_experiment(MLFLOW_PROD_EXPERIMENT_PATH)
-
+                
                 with mlflow.start_run(run_name=f"query_{self.session_id[:8]}"):
                     mlflow.log_params({
                         "country": self.country,
                         "member_id": member_id,
                         "validation_mode": validation_mode
                     })
-
+                    
                     # Calculate total tokens
-                    total_input = (token_breakdown['planning']['input'] + 
-                                   token_breakdown['synthesis']['input'] + 
-                                   token_breakdown['validation']['input'])
-                    total_output = (token_breakdown['planning']['output'] + 
-                                    token_breakdown['synthesis']['output'] + 
-                                    token_breakdown['validation']['output'])
-                    print (f"total output tokens: {total_output}")
-                    print (f"total input tokens: {total_input}")           
+                    total_input = (token_breakdown['planning']['input'] +
+                                 token_breakdown['synthesis']['input'] +
+                                 token_breakdown['validation']['input'])
+                    total_output = (token_breakdown['planning']['output'] +
+                                  token_breakdown['synthesis']['output'] +
+                                  token_breakdown['validation']['output'])
+                    
+                    print(f"total output tokens: {total_output}")
+                    print(f"total input tokens: {total_input}")
+                    
                     mlflow.log_metrics({
                         "total_time_seconds": round(total_time, 2),
                         "tools_called": tools_count,
                         "validation_attempts": validation_attempts,
                         "response_length": len(response_text),
                         "cost_usd": cost,
-                        # ✅ NEW: Log token metrics
+                        # Token metrics
                         "input_tokens": total_input,
                         "output_tokens": total_output,
                         "total_tokens": total_input + total_output,
@@ -282,47 +289,22 @@ Respond with ONLY valid JSON matching this format:
                         "synthesis_tokens": token_breakdown['synthesis']['input'] + token_breakdown['synthesis']['output'],
                         "validation_tokens": token_breakdown['validation']['input'] + token_breakdown['validation']['output']
                     })
-
+                    
                     if validation_result:
                         mlflow.log_metrics({
                             "judge_confidence": validation_result.get('confidence', 0),
                             "violations_count": len(validation_result.get('violations', []))
                         })
-
-                print(f"✓ Logged to MLflow: {MLFLOW_PROD_EXPERIMENT_PATH}")
-
+                    
+                    print(f"✓ Logged to MLflow: {MLFLOW_PROD_EXPERIMENT_PATH}")
         except Exception as e:
             print(f"⚠️  MLflow logging failed: {e}")
-          
-        try:
-            from mlflow.tracing import enable, log_trace
-            enable()
-
-            trace_data = {
-                  "planning": plan if plan else {},
-                  "token_usage": token_breakdown if token_breakdown else {},
-                  "executed_tools": tools_called if tools_called else [],
-                   "validation": validation_result if validation_result else {}
-            }  
-
-            log_trace(
-                trace_type="llm",
-                data=trace_data,
-                metadata={
-                    "country": self.country,
-                    "query": user_query,
-                    "response": response_text[:1000],
-                    "cost_usd": cost,
-                    "session_id": self.session_id
-               }
-            ) 
-            print("✓ MLflow trace logged successfully")
-
-        except Exception as trace_error:
-            print(f"⚠️ Failed to log MLflow trace: {trace_error}")
-
+        
+        # ✅ REMOVED: MLflow tracing section completely removed
+        # (No more mlflow.tracing import or log_trace calls)
+    
     def query(self, user_query, member_id, anonymize=True, validation_mode="llm_judge",
-             max_validation_attempts=2, status_callback=None):
+              max_validation_attempts=2, status_callback=None):
         """
         Process user query with intelligent tool selection
         
@@ -333,14 +315,13 @@ Respond with ONLY valid JSON matching this format:
             validation_mode: 'llm_judge', 'hybrid', or 'deterministic'
             max_validation_attempts: Max retry attempts for validation
             status_callback: Optional callback for real-time updates
-        
+            
         Returns:
             tuple: (answer, citations, metadata, judge_response, verdict, error_info, tools_called)
         """
-
         overall_start = time.time()
         profile = get_member_by_id(member_id)
-
+        
         if not profile:
             return (
                 f"Error: Member {member_id} not found.",
@@ -351,20 +332,19 @@ Respond with ONLY valid JSON matching this format:
                 "Member not found",
                 []
             )
-
+        
         # Convert numeric fields to integers
         numeric_fields = ['age', 'super_balance', 'other_assets', 'debt',
                          'preservation_age', 'annual_income_outside_super',
                          'dependents', 'account_based_pension']
-
         for field in numeric_fields:
             if field in profile:
                 profile[field] = self._convert_to_int(profile[field])
-
+        
         # Extract first name for personalization
         member_full_name = profile['name']
         member_first_name = member_full_name.split()[0] if member_full_name else 'Member'
-
+        
         # Currency code based on country
         currency_codes = {
             "Australia": "AUD",
@@ -373,7 +353,7 @@ Respond with ONLY valid JSON matching this format:
             "India": "INR"
         }
         currency_code = currency_codes.get(self.country, "AUD")
-
+        
         # Anonymization
         real_name = profile['name']
         if anonymize:
@@ -383,8 +363,8 @@ Respond with ONLY valid JSON matching this format:
         else:
             member_token = None
             print(f"✅ Using real name: '{real_name}'")
-
-        # ✅ NEW: STEP 0.5 - Planning Phase
+        
+        # ✅ STEP 0.5 - Planning Phase
         print("\n" + "="*60)
         print("🧠 PLANNING PHASE: Selecting tools...")
         print("="*60)
@@ -394,28 +374,26 @@ Respond with ONLY valid JSON matching this format:
         withdrawal_amount = plan["withdrawal_amount"]
         planning_reasoning = plan["reasoning"]
         
-        # ✅ NEW: Initialize token tracking
+        # Initialize token tracking
         token_breakdown = {
             'planning': plan.get('tokens', {'input': 0, 'output': 0}),
             'synthesis': {'input': 0, 'output': 0},
             'validation': {'input': 0, 'output': 0}
         }
         
-        print(f"\n📋 Plan: Call {len(tools_to_call)}/{3} tools")
+        print(f"\n📋 Plan: Call {len(tools_to_call)}/3 tools")
         print(f"   Selected: {', '.join(tools_to_call)}")
         print(f"   Savings: {(1 - len(tools_to_call)/3)*100:.0f}% reduction")
-
+        
         # STEP 1: Call only selected UC Functions
         if status_callback:
             status_callback("tool_start", f"Calling {len(tools_to_call)} {self.country} UC Functions...")
-
-        tool_start = time.time()
         
+        tool_start = time.time()
         print("\n" + "="*60)
         print(f"🛠️  TOOL EXECUTION: Calling {len(tools_to_call)} functions")
         print("="*60)
         
-        # ✅ NEW: Call only selected tools individually
         tool_results = {}
         tools_called = []
         all_citations = []
@@ -448,17 +426,16 @@ Respond with ONLY valid JSON matching this format:
                 print(f"⚠️  Tool {tool_id} failed or returned error")
         
         tool_duration = time.time() - tool_start
-
         print(f"\n✓ {len(tools_called)} UC Functions executed in {tool_duration:.2f}s")
         print(f"  vs. 3 functions in old approach (~{tool_duration * 3/len(tools_called):.2f}s)")
         print(f"  Time saved: ~{tool_duration * (3-len(tools_called))/3:.2f}s")
-
+        
         if status_callback:
             status_callback("tool_complete", None)
-
+        
         # STEP 2: Multi-stage synthesis with validation retry loop
         regulations = COUNTRY_REGULATIONS.get(self.country, {})
-
+        
         context = f"""MEMBER PROFILE:
 Name: {profile['name']}
 First Name: {member_first_name}
@@ -482,26 +459,25 @@ Tools Called: {', '.join(tools_to_call)}
 
 USER QUESTION:
 {user_query}"""
-
+        
         if status_callback:
             status_callback("synthesis_start", None)
-
+        
         synthesis_start = time.time()
-
+        
         # Retry loop configuration
         MAX_RETRIES = max_validation_attempts
         attempt = 0
         validation_passed = False
         validation_feedback = None
         validation_result = None
-
+        
         while attempt <= MAX_RETRIES and not validation_passed:
             attempt += 1
-            
             print(f"\n{'='*60}")
             print(f"✏️  SYNTHESIS ATTEMPT {attempt}/{MAX_RETRIES + 1}")
             print(f"{'='*60}")
-
+            
             # Build synthesis prompt
             base_prompt = f"""You are a retirement planning expert for {self.country}.
 
@@ -519,23 +495,23 @@ Note: We only called the tools necessary to answer this specific question ({len(
 If the user's question requires information from tools we didn't call, politely suggest they ask a more specific question.
 
 YOUR RESPONSE:"""
-
+            
             # Add validation feedback if retry
             if validation_feedback:
                 base_prompt += f"""
 
-⚠️ VALIDATION FEEDBACK FROM PREVIOUS ATTEMPT:
+⚠️  VALIDATION FEEDBACK FROM PREVIOUS ATTEMPT:
 {validation_feedback}
 
 Please correct the issues and regenerate your response."""
-
+            
             messages = [{"role": "user", "content": base_prompt}]
-
+            
             # Call LLM
             try:
                 answer, synth_duration, synth_in, synth_out = self.call_claude(messages, max_tokens=2000)
                 
-                # ✅ NEW: Track synthesis tokens (accumulate if multiple attempts)
+                # Track synthesis tokens (accumulate if multiple attempts)
                 if attempt == 1:
                     token_breakdown['synthesis']['input'] = synth_in
                     token_breakdown['synthesis']['output'] = synth_out
@@ -555,27 +531,23 @@ Please correct the issues and regenerate your response."""
                     str(e),
                     tools_called
                 )
-
+            
             # Name restoration
             if anonymize and member_token:
                 answer = answer.replace(member_token, real_name)
                 answer = answer.replace(member_token.split()[-1], member_first_name)
-
+            
             synthesis_duration = time.time() - synthesis_start
-
+            
             # Validation
             if validation_mode == "llm_judge":
-                # ✅ COMPATIBLE: Use validate() with context string
-                # Your validation.py expects: validate(response_text, user_query, context)
-                # Context string already includes full member profile + tool results
-                
                 validation_result = self.validator.validate(
                     response_text=answer,
                     user_query=user_query,
-                    context=context  # ← Full context string with member profile & tool results
+                    context=context
                 )
                 
-                # ✅ NEW: Track validation tokens (accumulate if multiple attempts)
+                # Track validation tokens (accumulate if multiple attempts)
                 judge_in = validation_result.get('input_tokens', 0)
                 judge_out = validation_result.get('output_tokens', 0)
                 
@@ -597,29 +569,28 @@ Please correct the issues and regenerate your response."""
                     validation_feedback = "Please fix these issues:\n" + "\n".join([
                         f"- {v}" for v in violations
                     ])
-                else:
-                    validation_passed = True
+            else:
+                validation_passed = True
             
-            elif validation_mode == "deterministic":
+            if validation_mode == "deterministic":
                 det_validator = DeterministicValidator()
                 validation_result = det_validator.validate(answer, user_query, context)
                 validation_passed = validation_result['passed']
-            
-            else:  # hybrid or skip
+            elif validation_mode not in ["llm_judge", "deterministic"]:
+                # hybrid or skip
                 validation_passed = True
                 validation_result = {"passed": True, "confidence": 1.0, "verdict": "Pass"}
-
-        total_time = time.time() - overall_start
-
-        # ✅ NEW: Calculate cost using our calculator
-        from cost_utils import calculate_query_costs
         
+        total_time = time.time() - overall_start
+        
+        # Calculate cost using calculator
+        from cost_utils import calculate_query_costs
         cost_breakdown = calculate_query_costs(token_breakdown)
         total_cost = cost_breakdown['total']
         
         # Print token and cost breakdown
         print(f"\n{'='*60}")
-        print(f"📊 TOKEN & COST BREAKDOWN")
+        print(f"�� TOKEN & COST BREAKDOWN")
         print(f"{'='*60}")
         
         # Planning tokens
@@ -655,8 +626,8 @@ Please correct the issues and regenerate your response."""
         print(f"   Hourly:  {queries_per_hour:>6.1f} queries → ${queries_per_hour * total_cost:>7.2f}")
         print(f"   Daily:   {queries_per_day:>6.0f} queries → ${queries_per_day * total_cost:>7.2f}")
         print(f"   Monthly: {queries_per_month:>6.0f} queries → ${queries_per_month * total_cost:>7.2f}")
-
-        # Log to audit (with cost!)
+        
+        # ✅ FIX: Pass token_breakdown to logging
         self._log_query_audit(
             member_id=member_id,
             user_query=user_query,
@@ -666,16 +637,17 @@ Please correct the issues and regenerate your response."""
             validation_mode=validation_mode,
             validation_attempts=attempt,
             validation_result=validation_result,
-            cost=total_cost  # ✅ NOW PASS ACTUAL COST!
+            cost=total_cost,
+            token_breakdown=token_breakdown  # ✅ NOW PASSED!
         )
-
+        
         print(f"\n{'='*60}")
         print(f"✅ QUERY COMPLETE")
         print(f"{'='*60}")
         print(f"Total time: {total_time:.2f}s")
         print(f"Tools called: {len(tools_called)}/3 (saved {3-len(tools_called)} calls)")
         print(f"Validation: {validation_result.get('verdict', 'N/A')} in {attempt} attempt(s)")
-
+        
         metadata = {
             "total_time": round(total_time, 2),
             "tools_called_count": len(tools_called),
@@ -685,11 +657,11 @@ Please correct the issues and regenerate your response."""
             "planning_reasoning": planning_reasoning,
             "tools_selected": tools_to_call,
             "tools_saved": 3 - len(tools_to_call),
-            "token_breakdown": token_breakdown,  # ✅ NEW
-            "cost_breakdown": cost_breakdown,    # ✅ NEW
-            "total_cost": total_cost             # ✅ NEW
+            "token_breakdown": token_breakdown,
+            "cost_breakdown": cost_breakdown,
+            "total_cost": total_cost
         }
-
+        
         return (
             answer,
             all_citations,
@@ -699,3 +671,4 @@ Please correct the issues and regenerate your response."""
             None,
             tools_called
         )
+
