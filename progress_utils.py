@@ -1,7 +1,8 @@
-# progress_utils.py - WITH LIVE UPDATES + JUDGE PHASE
+# progress_utils.py - WITH IMMEDIATE LIVE UPDATES
 """
-✅ FIX 4: Shows dropdown immediately, updates live
-✅ FIX 5: Shows judge validation phase
+✅ FIX: Shows dropdown IMMEDIATELY at the start, updates live as phases complete
+✅ FIX: Shows judge validation phase in real-time
+✅ Uses st.empty() containers for live updating without flickering
 """
 
 import streamlit as st
@@ -53,6 +54,111 @@ def render_phase_card(phase_name, status, details=None, duration=None, icon="�
     st.markdown(card_html, unsafe_allow_html=True)
 
 
+def initialize_live_progress_tracker():
+    """
+    ✅ NEW: Initialize live progress tracker with empty containers
+    Call this BEFORE starting agent query to set up live update infrastructure
+    """
+    if 'progress_containers' not in st.session_state:
+        st.session_state.progress_containers = {}
+    
+    # Create main container
+    st.markdown("### 📋 Agent Processing - Live Updates")
+    
+    # Create expander that's expanded by default
+    with st.expander("🔄 Processing Phases (Updating Live...)", expanded=True):
+        
+        # Create empty containers for each phase that we'll update
+        st.session_state.progress_containers['phase1'] = st.empty()
+        st.session_state.progress_containers['phase2'] = st.empty()
+        st.session_state.progress_containers['phase3'] = st.empty()
+        st.session_state.progress_containers['phase4'] = st.empty()
+        st.session_state.progress_containers['phase5'] = st.empty()
+        st.session_state.progress_containers['summary'] = st.empty()
+        
+        # Show initial waiting state
+        with st.session_state.progress_containers['phase1']:
+            render_phase_card(
+                phase_name="📊 Phase 1: Data Retrieval",
+                status="pending",
+                details="Waiting to start...",
+                icon="📊"
+            )
+        
+        with st.session_state.progress_containers['phase2']:
+            render_phase_card(
+                phase_name="⚙️ Phase 2: UC Function Execution",
+                status="pending",
+                details="Waiting for data retrieval...",
+                icon="⚙️"
+            )
+        
+        with st.session_state.progress_containers['phase3']:
+            render_phase_card(
+                phase_name="✏️ Phase 3: LLM Synthesis",
+                status="pending",
+                details="Waiting for calculations...",
+                icon="✏️"
+            )
+        
+        with st.session_state.progress_containers['phase4']:
+            render_phase_card(
+                phase_name="⚖️ Phase 4: Judge Validation",
+                status="pending",
+                details="Waiting for synthesis...",
+                icon="⚖️"
+            )
+        
+        with st.session_state.progress_containers['phase5']:
+            render_phase_card(
+                phase_name="📝 Phase 5: Audit Logging",
+                status="pending",
+                details="Waiting for validation...",
+                icon="📝"
+            )
+
+
+def update_live_progress_phase(phase_num, phase_name, status, details=None, duration=None, icon="🔄"):
+    """
+    ✅ NEW: Update a specific phase in real-time
+    Called by agent_processor during execution
+    
+    Args:
+        phase_num: 1-5 (which phase to update)
+        phase_name: Display name
+        status: 'pending', 'running', 'completed', 'error'
+        details: Optional details text
+        duration: Optional duration in seconds
+        icon: Optional icon override
+    """
+    container_key = f'phase{phase_num}'
+    
+    if 'progress_containers' in st.session_state and container_key in st.session_state.progress_containers:
+        with st.session_state.progress_containers[container_key]:
+            render_phase_card(phase_name, status, details, duration, icon)
+
+
+def update_live_progress_summary(total_time, tools_count, citations_count):
+    """
+    ✅ NEW: Update summary metrics at the end
+    """
+    if 'progress_containers' in st.session_state and 'summary' in st.session_state.progress_containers:
+        with st.session_state.progress_containers['summary']:
+            st.markdown("---")
+            st.markdown("**📊 Summary Metrics**")
+            
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                st.metric("Total Time", f"{total_time:.2f}s")
+            
+            with col2:
+                st.metric("UC Functions", tools_count)
+            
+            with col3:
+                st.metric("Citations", citations_count)
+
+
 def render_data_retrieval_card(member_data):
     """Render data retrieval phase card"""
     member_name = member_data.get('name', 'Unknown')
@@ -90,7 +196,7 @@ def render_tool_execution_card(tool_name, authority, status, duration=None, deta
 
 def render_validation_phase_card(validation_data, duration=None):
     """
-    ✅ FIX 5: Render judge validation phase
+    ✅ Render judge validation phase
     """
     mode = validation_data.get('mode', 'llm_judge')
     passed = validation_data.get('passed', False)
@@ -129,7 +235,8 @@ def render_audit_card(session_id):
 
 def render_progress(member_data, tools_called, show_logs=True):
     """
-    ✅ FIXED: Matches app.py signature + shows live updates + judge phase
+    ✅ COMPATIBILITY: Keep this for backward compatibility
+    But it's now deprecated in favor of live updates
     
     Args:
         member_data: Member profile dict
@@ -140,30 +247,16 @@ def render_progress(member_data, tools_called, show_logs=True):
     if not show_logs:
         return
     
-    st.markdown("### 📋 Agent Processing Logs")
+    # This is now only called at the END for final display
+    # The live updates happen through initialize_live_progress_tracker() and update_live_progress_phase()
     
-    # ✅ FIX 4: Show expander IMMEDIATELY, expanded by default
-    # This creates a live-updating view as phases complete
-    with st.expander("📊 Processing Phases (Live Updates)", expanded=True):
-        
-        # Check if processing has started
-        if not member_data and not tools_called:
-            st.info("🔄 Waiting for processing to start...")
-            st.caption("Click '🚀 Get Recommendation' to begin.")
-            return
-        
-        # Processing has started - show phases
+    st.markdown("### 📋 Agent Processing Summary")
+    
+    with st.expander("📊 Final Processing Report", expanded=False):
         
         # PHASE 1: Data Retrieval
         if member_data:
             render_data_retrieval_card(member_data)
-        else:
-            render_phase_card(
-                phase_name="📊 Loading Member Data",
-                status="running",
-                details="Fetching from Unity Catalog...",
-                icon="📊"
-            )
         
         # PHASE 2: UC Function Execution
         if tools_called and len(tools_called) > 0:
@@ -195,13 +288,6 @@ def render_progress(member_data, tools_called, show_logs=True):
                     duration=duration,
                     details=details
                 )
-        else:
-            render_phase_card(
-                phase_name="⚙️ Calling UC Functions",
-                status="running",
-                details="Executing regulatory calculators...",
-                icon="⚙️"
-            )
         
         # PHASE 3: LLM Synthesis
         if st.session_state.get("agent_output"):
@@ -216,40 +302,23 @@ def render_progress(member_data, tools_called, show_logs=True):
                     duration=synthesis_time,
                     icon="✏️"
                 )
-        else:
-            if tools_called and len(tools_called) > 0:
-                render_phase_card(
-                    phase_name="✏️ LLM Synthesis",
-                    status="running",
-                    details="Generating personalized advice...",
-                    icon="✏️"
-                )
         
-        # ✅ FIX 5: PHASE 4: Judge Validation (NEW!)
+        # PHASE 4: Judge Validation
         if st.session_state.get("agent_output"):
             validation = st.session_state.agent_output.get("_validation", {})
             
             if validation:
-                # Calculate validation duration if available
                 timings = st.session_state.agent_output.get("timings", {})
                 validation_time = timings.get("validation", None)
                 
                 render_validation_phase_card(validation, duration=validation_time)
-        else:
-            if tools_called and len(tools_called) > 0:
-                render_phase_card(
-                    phase_name="⚖️ Judge Validation",
-                    status="running",
-                    details="Checking compliance...",
-                    icon="⚖️"
-                )
         
         # PHASE 5: Audit Logging
         if st.session_state.get("agent_output"):
             session_id = st.session_state.get("session_id", "unknown")
             render_audit_card(session_id)
         
-        # Summary Metrics (only show when complete)
+        # Summary Metrics
         if st.session_state.get("agent_output"):
             st.markdown("---")
             st.markdown("**📊 Summary Metrics**")
@@ -280,4 +349,4 @@ def show_processing_status(stage, message=None):
     Real-time processing status updates
     Called by agent during execution via status_callback
     """
-    pass  # Placeholder for future enhancements
+    pass  # Placeholder - now handled by update_live_progress_phase()

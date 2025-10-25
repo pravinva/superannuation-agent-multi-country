@@ -1,7 +1,6 @@
-# audit/audit_utils.py - FIXED VERSION WITH MATCHING PARAMETERS
+# audit/audit_utils.py - COMPLETE FIXED VERSION
 """
 Audit logging with proper parameter handling
-✅ FIXED: Parameter names match what agent.py passes
 ✅ FIXED: Added limit parameter to get_audit_log()
 """
 
@@ -52,16 +51,13 @@ def log_query_event(
     session_id,
     country,
     query_string,
-    response_text=None,  # ✅ FIXED: Changed from agent_response to response_text
-    agent_response=None,  # ✅ Keep for backward compatibility
-    result_preview=None,
-    citations=None,
-    tool_used=None,
-    tools_called_count=None,  # ✅ FIXED: Added this parameter
-    judge_response=None,
-    judge_verdict=None,
-    judge_confidence=None,  # ✅ FIXED: Added this parameter
-    error_info=None,
+    agent_response,
+    result_preview,
+    citations,
+    tool_used,
+    judge_response,
+    judge_verdict,
+    error_info,
     cost=0.0,
     validation_mode="llm_judge",
     validation_attempts=1,
@@ -75,15 +71,12 @@ def log_query_event(
         session_id: Session UUID
         country: Country name (Australia, USA, United Kingdom, India)
         query_string: User's query
-        response_text: Full LLM response (preferred)
-        agent_response: Full LLM response (backward compatibility)
+        agent_response: Full LLM response
         result_preview: Summary/preview of result
         citations: List of citations
         tool_used: Name of tool/calculator used
-        tools_called_count: Number of tools called
         judge_response: Judge LLM response
         judge_verdict: Pass/Reject/Review/ERROR
-        judge_confidence: Confidence score (0.0-1.0)
         error_info: Error details if any
         cost: Cost of query (default 0.0)
         validation_mode: Validation strategy used (llm_judge/hybrid/deterministic)
@@ -93,11 +86,6 @@ def log_query_event(
     
     event_id = str(uuid.uuid4())
     timestamp = datetime.datetime.utcnow().isoformat()
-    
-    # ✅ FIXED: Handle both response_text and agent_response
-    final_response = response_text if response_text else agent_response
-    if not final_response:
-        final_response = ""
     
     try:
         table_path = get_governance_table_path()
@@ -115,24 +103,8 @@ def log_query_event(
             citations_str = str(citations) if citations else "[]"
         
         # Truncate long responses
-        if final_response and len(final_response) > 15000:
-            final_response = final_response[:15000] + "... [truncated]"
-        
-        # Handle result_preview
-        if not result_preview:
-            result_preview = final_response[:200] if final_response else ""
-        
-        # Handle tool_used
-        if not tool_used and tools_called_count:
-            tool_used = f"{tools_called_count} tools"
-        elif not tool_used:
-            tool_used = "unknown"
-        
-        # Handle judge_response
-        if not judge_response and judge_confidence is not None:
-            judge_response = f"Confidence: {judge_confidence:.2%}"
-        elif not judge_response:
-            judge_response = ""
+        if agent_response and len(agent_response) > 15000:
+            agent_response = agent_response[:15000] + "... [truncated]"
         
         query = f"""
 INSERT INTO {table_path} (
@@ -147,14 +119,14 @@ INSERT INTO {table_path} (
     '{escape(session_id)}',
     '{escape(country)}',
     '{escape(query_string)}',
-    '{escape(final_response)}',
+    '{escape(agent_response)}',
     '{escape(result_preview)}',
     {cost},
     '{escape(citations_str)}',
     '{escape(tool_used)}',
     '{escape(judge_response)}',
     '{escape(judge_verdict)}',
-    '{escape(error_info if error_info else "")}',
+    '{escape(error_info)}',
     '{escape(validation_mode)}',
     {validation_attempts},
     {total_time_seconds}
@@ -173,6 +145,8 @@ INSERT INTO {table_path} (
 
 def get_audit_log(session_id=None, user_id=None, country=None, limit=100):
     """
+    ✅ FIXED: Added limit parameter with default value
+    
     Retrieve audit logs with optional filters
     
     Args:
@@ -199,6 +173,7 @@ def get_audit_log(session_id=None, user_id=None, country=None, limit=100):
         if conditions:
             query += " WHERE " + " AND ".join(conditions)
         
+        # ✅ FIXED: Use limit parameter instead of hardcoded value
         query += f" ORDER BY timestamp DESC LIMIT {limit}"
         
         return execute_query(query)

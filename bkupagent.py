@@ -43,7 +43,7 @@ class MultiCountryAdvisorAgent:
         print(f"  Warehouse: {self.warehouse_id}")
 
     def call_claude(self, messages, max_tokens=2000, temperature=None, endpoint=None):
-        """Call Claude endpoint via Databricks SDK - WITH TOKEN TRACKING"""
+        """Call Claude endpoint via Databricks SDK"""
         start_time = time.time()
 
         temp = temperature if temperature is not None else MAIN_LLM_TEMPERATURE
@@ -69,24 +69,10 @@ class MultiCountryAdvisorAgent:
             temperature=temp
         )
 
-        answer = response.choices[0].message.content
         elapsed = time.time() - start_time
+        print(f"⏱️  Claude call: {elapsed:.2f}s (tokens={max_tokens}, temp={temp})")
 
-        # ✅ NEW: Extract token usage from response
-        usage = getattr(response, 'usage', None)
-        if usage:
-            input_tokens = getattr(usage, 'prompt_tokens', 0)
-            output_tokens = getattr(usage, 'completion_tokens', 0)
-            total_tokens = input_tokens + output_tokens
-        else:
-            input_tokens = 0
-            output_tokens = 0
-            total_tokens = 0
-        
-        print(f"⏱️  Claude call: {elapsed:.2f}s")
-        print(f"📊 Tokens: {input_tokens:,} input + {output_tokens:,} output = {total_tokens:,} total")
-
-        return answer, elapsed, input_tokens, output_tokens
+        return response.choices[0].message.content, elapsed
 
     def _convert_to_int(self, value, default=0):
         """Safely convert value to integer"""
@@ -162,7 +148,7 @@ Respond with ONLY valid JSON matching this format:
 
         try:
             planning_messages = [{"role": "user", "content": planning_prompt}]
-            planning_response, planning_time, plan_in, plan_out = self.call_claude(
+            planning_response, planning_time = self.call_claude(
                 planning_messages, 
                 max_tokens=300,
                 temperature=0.0  # Deterministic for planning
@@ -181,9 +167,6 @@ Respond with ONLY valid JSON matching this format:
             
             if "reasoning" not in plan:
                 plan["reasoning"] = "Using selected tools"
-            
-            # ✅ NEW: Add token tracking to plan
-            plan["tokens"] = {"input": plan_in, "output": plan_out}
             
             print(f"🧠 Planning complete ({planning_time:.2f}s):")
             print(f"   Tools needed: {', '.join(plan['tools_needed'])}")
@@ -212,7 +195,7 @@ Respond with ONLY valid JSON matching this format:
 
     def _log_query_audit(self, member_id, user_query, response_text, total_time, 
                          tools_count, validation_mode="llm_judge", validation_attempts=1,
-                         validation_result=None, cost=0.0):
+                         validation_result=None):
         """
         Log query to BOTH Unity Catalog AND MLflow
         """
@@ -234,8 +217,7 @@ Respond with ONLY valid JSON matching this format:
                 validation_mode=validation_mode,
                 validation_attempts=validation_attempts,
                 judge_verdict=validation_result.get('verdict') if validation_result else None,
-                judge_confidence=validation_result.get('confidence') if validation_result else None,
-                cost=cost  # ✅ NOW PASS ACTUAL COST!
+                judge_confidence=validation_result.get('confidence') if validation_result else None
             )
 
             print(f"✓ Audit logged to Unity Catalog")
@@ -249,7 +231,6 @@ Respond with ONLY valid JSON matching this format:
             from config import MLFLOW_PROD_EXPERIMENT_PATH
 
             if MLFLOW_PROD_EXPERIMENT_PATH:
-                mlflow.set_tracking_uri("databricks")
                 mlflow.set_experiment(MLFLOW_PROD_EXPERIMENT_PATH)
 
                 with mlflow.start_run(run_name=f"query_{self.session_id[:8]}"):
@@ -263,8 +244,7 @@ Respond with ONLY valid JSON matching this format:
                         "total_time_seconds": round(total_time, 2),
                         "tools_called": tools_count,
                         "validation_attempts": validation_attempts,
-                        "response_length": len(response_text),
-                        "cost_usd": cost  # ✅ NEW: Log cost
+                        "response_length": len(response_text)
                     })
 
                     if validation_result:
@@ -277,33 +257,6 @@ Respond with ONLY valid JSON matching this format:
 
         except Exception as e:
             print(f"⚠️  MLflow logging failed: {e}")
-          
-        try:
-            from mlflow.tracing import enable, log_trace
-            enable()
-
-            trace_data = {
-                  "planning": plan if plan else {},
-                  "token_usage": token_breakdown if token_breakdown else {},
-                  "executed_tools": tools_called if tools_called else [],
-                   "validation": validation_result if validation_result else {}
-            }  
-
-            log_trace(
-                trace_type="llm",
-                data=trace_data,
-                metadata={
-                    "country": self.country,
-                    "query": user_query,
-                    "response": response_text[:1000],
-                    "cost_usd": cost,
-                    "session_id": self.session_id
-               }
-            ) 
-            print("✓ MLflow trace logged successfully")
-
-        except Exception as trace_error:
-            print(f"⚠️ Failed to log MLflow trace: {trace_error}")
 
     def query(self, user_query, member_id, anonymize=True, validation_mode="llm_judge",
              max_validation_attempts=2, status_callback=None):
@@ -378,13 +331,6 @@ Respond with ONLY valid JSON matching this format:
         withdrawal_amount = plan["withdrawal_amount"]
         planning_reasoning = plan["reasoning"]
         
-        # ✅ NEW: Initialize token tracking
-        token_breakdown = {
-            'planning': plan.get('tokens', {'input': 0, 'output': 0}),
-            'synthesis': {'input': 0, 'output': 0},
-            'validation': {'input': 0, 'output': 0}
-        }
-        
         print(f"\n📋 Plan: Call {len(tools_to_call)}/{3} tools")
         print(f"   Selected: {', '.join(tools_to_call)}")
         print(f"   Savings: {(1 - len(tools_to_call)/3)*100:.0f}% reduction")
@@ -451,10 +397,7 @@ Preservation Age: {profile.get('preservation_age', 60)}
 Balance: {currency_code} {profile.get('super_balance', 0)}
 Employment: {profile.get('employment_status')}
 Marital Status: {profile.get('marital_status')}
-Dependents: {profile.get('dependents', 0)}
-Other Assets: {currency_code} {profile.get('other_assets', 0)}
 Country: {self.country}
-Member ID: {member_id}
 
 REGULATORY CONTEXT:
 {json.dumps(regulations, indent=2)}
@@ -517,17 +460,7 @@ Please correct the issues and regenerate your response."""
 
             # Call LLM
             try:
-                answer, synth_duration, synth_in, synth_out = self.call_claude(messages, max_tokens=2000)
-                
-                # ✅ NEW: Track synthesis tokens (accumulate if multiple attempts)
-                if attempt == 1:
-                    token_breakdown['synthesis']['input'] = synth_in
-                    token_breakdown['synthesis']['output'] = synth_out
-                else:
-                    # Accumulate tokens from retries
-                    token_breakdown['synthesis']['input'] += synth_in
-                    token_breakdown['synthesis']['output'] += synth_out
-                    
+                answer, synth_duration = self.call_claude(messages, max_tokens=2000)
             except Exception as e:
                 print(f"❌ Synthesis error: {e}")
                 return (
@@ -549,27 +482,7 @@ Please correct the issues and regenerate your response."""
 
             # Validation
             if validation_mode == "llm_judge":
-                # ✅ COMPATIBLE: Use validate() with context string
-                # Your validation.py expects: validate(response_text, user_query, context)
-                # Context string already includes full member profile + tool results
-                
-                validation_result = self.validator.validate(
-                    response_text=answer,
-                    user_query=user_query,
-                    context=context  # ← Full context string with member profile & tool results
-                )
-                
-                # ✅ NEW: Track validation tokens (accumulate if multiple attempts)
-                judge_in = validation_result.get('input_tokens', 0)
-                judge_out = validation_result.get('output_tokens', 0)
-                
-                if attempt == 1:
-                    token_breakdown['validation']['input'] = judge_in
-                    token_breakdown['validation']['output'] = judge_out
-                else:
-                    token_breakdown['validation']['input'] += judge_in
-                    token_breakdown['validation']['output'] += judge_out
-                
+                validation_result = self.validator.validate(answer, user_query, context)
                 validation_passed = validation_result['passed']
                 
                 if not validation_passed and attempt <= MAX_RETRIES:
@@ -595,52 +508,7 @@ Please correct the issues and regenerate your response."""
 
         total_time = time.time() - overall_start
 
-        # ✅ NEW: Calculate cost using our calculator
-        from cost_utils import calculate_query_costs
-        
-        cost_breakdown = calculate_query_costs(token_breakdown)
-        total_cost = cost_breakdown['total']
-        
-        # Print token and cost breakdown
-        print(f"\n{'='*60}")
-        print(f"📊 TOKEN & COST BREAKDOWN")
-        print(f"{'='*60}")
-        
-        # Planning tokens
-        plan_in = token_breakdown['planning']['input']
-        plan_out = token_breakdown['planning']['output']
-        plan_total = plan_in + plan_out
-        print(f"Planning:   {plan_in:>6,} input + {plan_out:>6,} output = {plan_total:>6,} total → ${cost_breakdown['planning']:.4f}")
-        
-        # Synthesis tokens
-        synth_in = token_breakdown['synthesis']['input']
-        synth_out = token_breakdown['synthesis']['output']
-        synth_total = synth_in + synth_out
-        print(f"Synthesis:  {synth_in:>6,} input + {synth_out:>6,} output = {synth_total:>6,} total → ${cost_breakdown['synthesis']:.4f}")
-        
-        # Validation tokens
-        val_in = token_breakdown['validation']['input']
-        val_out = token_breakdown['validation']['output']
-        val_total = val_in + val_out
-        print(f"Validation: {val_in:>6,} input + {val_out:>6,} output = {val_total:>6,} total → ${cost_breakdown['validation']:.4f}")
-        
-        # Total
-        total_tokens = plan_total + synth_total + val_total
-        print(f"{'─'*60}")
-        print(f"TOTAL:      {total_tokens:>6,} tokens → ${total_cost:.4f}")
-        print(f"{'='*60}")
-        
-        # Calculate projected costs at 0.1 queries/minute
-        queries_per_hour = 0.1 * 60
-        queries_per_day = queries_per_hour * 24
-        queries_per_month = queries_per_day * 30
-        
-        print(f"\n💰 PROJECTED COSTS (0.1 queries/min):")
-        print(f"   Hourly:  {queries_per_hour:>6.1f} queries → ${queries_per_hour * total_cost:>7.2f}")
-        print(f"   Daily:   {queries_per_day:>6.0f} queries → ${queries_per_day * total_cost:>7.2f}")
-        print(f"   Monthly: {queries_per_month:>6.0f} queries → ${queries_per_month * total_cost:>7.2f}")
-
-        # Log to audit (with cost!)
+        # Log to audit
         self._log_query_audit(
             member_id=member_id,
             user_query=user_query,
@@ -649,8 +517,7 @@ Please correct the issues and regenerate your response."""
             tools_count=len(tools_called),
             validation_mode=validation_mode,
             validation_attempts=attempt,
-            validation_result=validation_result,
-            cost=total_cost  # ✅ NOW PASS ACTUAL COST!
+            validation_result=validation_result
         )
 
         print(f"\n{'='*60}")
@@ -668,10 +535,7 @@ Please correct the issues and regenerate your response."""
             "validation_mode": validation_mode,
             "planning_reasoning": planning_reasoning,
             "tools_selected": tools_to_call,
-            "tools_saved": 3 - len(tools_to_call),
-            "token_breakdown": token_breakdown,  # ✅ NEW
-            "cost_breakdown": cost_breakdown,    # ✅ NEW
-            "total_cost": total_cost             # ✅ NEW
+            "tools_saved": 3 - len(tools_to_call)
         }
 
         return (

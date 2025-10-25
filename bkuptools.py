@@ -195,7 +195,7 @@ def get_all_tools_metadata(country):
                 "id": "tax",
                 "name": "HMRC Pension Tax Calculator",
                 "description": "Calculates UK pension tax and tax-free lump sum. Use for: tax questions, 25% lump sum, PAYE.",
-                "uc_function": "super_advisory_demo.pension_calculators.uk_calculate_pension_tax",
+                "uc_function": "super_advisory_demo.pension_calculators.uk_calculate_tax",
                 "authority": "HM Revenue & Customs",
                 "citation_ids": ["UK-TAX-001"]
             },
@@ -471,114 +471,84 @@ def _call_usa_tool(tool_id, member_id, profile, withdrawal_amount, warehouse_id)
 # ============================================================================
 
 def _call_uk_tool(tool_id, member_id, profile, withdrawal_amount, warehouse_id):
-    """Call individual UK UC function - FIXED with correct parameter order"""
+    """Call individual UK UC function"""
     
     start_time = time.time()
     
     if tool_id == "tax":
-        # ✅ FIXED: uk_calculate_pension_tax(member_id, member_age, pension_pot, withdrawal_amount, withdrawal_type)
-        member_age = int(profile['age'])
-        pension_pot = float(profile['super_balance'])
-        withdrawal_type = 'LUMP_SUM'
-        
+        # HMRC Tax
         query = f"""
-            SELECT super_advisory_demo.pension_calculators.uk_calculate_pension_tax(
+            SELECT super_advisory_demo.pension_calculators.uk_calculate_tax(
                 '{member_id}',
-                {member_age},
-                {pension_pot},
-                {withdrawal_amount},
-                '{withdrawal_type}'
+                {profile['age']},
+                {profile['super_balance']},
+                {withdrawal_amount}
             ) as result
         """
-        
-        print(f"✅ Calling UK tax function:")
-        print(f"   Member ID: {member_id}")
-        print(f"   Age: {member_age}")
-        print(f"   Pension pot: £{pension_pot:,.0f}")
-        print(f"   Withdrawal: £{withdrawal_amount:,.0f}")
-        print(f"   Type: {withdrawal_type}")
         
         result_raw = execute_query(warehouse_id, query)
         duration = time.time() - start_time
         
         if result_raw and len(result_raw) > 0:
-            result_struct = result_raw[0][0]
-            print(f"✅ UK tax calculation succeeded!")
             return {
                 "tool_name": "HMRC Pension Tax Calculator",
                 "tool_id": "tax",
-                "uc_function": "super_advisory_demo.pension_calculators.uk_calculate_pension_tax",
+                "uc_function": "super_advisory_demo.pension_calculators.uk_calculate_tax",
                 "authority": "HM Revenue & Customs",
-                "calculation": str(result_struct),
+                "calculation": result_raw[0][0],
                 "citations": get_citations(['UK-TAX-001'], warehouse_id),
                 "duration": round(duration, 2)
             }
-        else:
-            print(f"❌ UK tax calculation returned no results")
-            return {"error": "UK tax calculation failed"}
     
     elif tool_id == "benefit":
-        # State Pension - fallback for now
-        print(f"ℹ️  Using fallback for State Pension")
-        age = int(profile['age'])
-        state_pension_age = 66
-        full_weekly = 203.85
+        # State Pension
+        query = f"""
+            SELECT super_advisory_demo.pension_calculators.uk_check_state_pension(
+                '{member_id}',
+                {profile['age']},
+                '{profile['marital_status']}',
+                {profile['super_balance']}
+            ) as result
+        """
+        
+        result_raw = execute_query(warehouse_id, query)
         duration = time.time() - start_time
         
-        fallback = {
-            "current_age": age,
-            "state_pension_age": state_pension_age,
-            "years_to_eligibility": max(0, state_pension_age - age),
-            "eligible": age >= state_pension_age,
-            "full_weekly_amount": full_weekly,
-            "full_annual_amount": full_weekly * 52,
-            "note": "Assumes 35 years NI contributions"
-        }
-        
-        return {
-            "tool_name": "State Pension Calculator (Estimated)",
-            "tool_id": "benefit",
-            "uc_function": "super_advisory_demo.pension_calculators.uk_check_state_pension",
-            "authority": "Department for Work and Pensions",
-            "calculation": str(fallback),
-            "citations": get_citations(['UK-DWP-001'], warehouse_id),
-            "duration": round(duration, 2)
-        }
+        if result_raw and len(result_raw) > 0:
+            return {
+                "tool_name": "State Pension Calculator",
+                "tool_id": "benefit",
+                "uc_function": "super_advisory_demo.pension_calculators.uk_check_state_pension",
+                "authority": "Department for Work and Pensions",
+                "calculation": result_raw[0][0],
+                "citations": get_citations(['UK-DWP-001'], warehouse_id),
+                "duration": round(duration, 2)
+            }
     
     elif tool_id == "projection":
-        # Pension Projection - fallback for now
-        print(f"ℹ️  Using fallback for Projection")
-        current_pot = float(profile['super_balance'])
-        age = int(profile['age'])
-        retirement_age = 66
-        years = max(0, retirement_age - age)
-        growth_rate = 0.05
+        # Pension Projection
+        query = f"""
+            SELECT super_advisory_demo.pension_calculators.uk_project_pension(
+                '{member_id}',
+                {profile['age']},
+                {profile['super_balance']},
+                20
+            ) as result
+        """
+        
+        result_raw = execute_query(warehouse_id, query)
         duration = time.time() - start_time
         
-        projected_pot = current_pot * ((1 + growth_rate) ** years)
-        annual_income = projected_pot * 0.04
-        
-        fallback = {
-            "current_pot": current_pot,
-            "current_age": age,
-            "retirement_age": retirement_age,
-            "years_to_retirement": years,
-            "projected_pot": projected_pot,
-            "growth_rate": "5%",
-            "safe_annual_income": annual_income,
-            "safe_monthly_income": annual_income / 12,
-            "note": "Based on 5% growth and 4% withdrawal rate"
-        }
-        
-        return {
-            "tool_name": "UK Pension Projection (Estimated)",
-            "tool_id": "projection",
-            "uc_function": "super_advisory_demo.pension_calculators.uk_project_pension",
-            "authority": "Pensions Regulator / FCA",
-            "calculation": str(fallback),
-            "citations": get_citations(['UK-TPR-001'], warehouse_id),
-            "duration": round(duration, 2)
-        }
+        if result_raw and len(result_raw) > 0:
+            return {
+                "tool_name": "UK Pension Projection Engine",
+                "tool_id": "projection",
+                "uc_function": "super_advisory_demo.pension_calculators.uk_project_pension",
+                "authority": "Pensions Regulator / FCA",
+                "calculation": result_raw[0][0],
+                "citations": get_citations(['UK-TPR-001'], warehouse_id),
+                "duration": round(duration, 2)
+            }
     
     return {"error": f"Unknown tool_id: {tool_id}"}
 

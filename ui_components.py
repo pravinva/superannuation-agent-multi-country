@@ -2,6 +2,7 @@
 """
 UI components for the retirement advisory app
 NOW DISPLAYS: Tax + Government Benefit + Projection for ALL countries
+✨ ENHANCED: Beautiful tab styling with hover effects
 """
 
 import streamlit as st
@@ -15,8 +16,124 @@ BRANDCONFIG = {
 }
 
 
+def apply_custom_styles():
+    """
+    Apply custom CSS styling for enhanced UI
+    ✨ Beautiful tabs with logo colors (Green #00843D & Gold #FFD700)
+    ✨ Hover effects and animations
+    ✨ Professional gradients
+    """
+    st.markdown("""
+    <style>
+        /* ============================================
+           ENHANCED TAB STYLING
+           ============================================ */
+        
+        /* Tab container */
+        .stTabs {
+            width: 100%;
+            margin-top: 1rem;
+        }
+        
+        /* Tab list container */
+        .stTabs [data-baseweb="tab-list"] {
+            gap: 0px;
+            width: 100%;
+            border-bottom: 3px solid #00843D;
+            padding: 0;
+        }
+        
+        /* Individual tabs */
+        .stTabs [data-baseweb="tab"] {
+            height: 70px;
+            flex: 1;
+            white-space: pre-wrap;
+            background-color: #f8f9fa;
+            border: none;
+            border-radius: 8px 8px 0 0;
+            color: #2c3e50;
+            font-size: 18px;
+            font-weight: 600;
+            padding: 1rem 2rem;
+            margin: 0 2px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        /* Tab hover effect - gradient with logo colors */
+        .stTabs [data-baseweb="tab"]:hover {
+            background: linear-gradient(135deg, #00843D 0%, #FFD700 100%);
+            color: white;
+            transform: translateY(-3px);
+            box-shadow: 0 6px 12px rgba(0, 132, 61, 0.3);
+            font-size: 19px;
+        }
+        
+        /* Active tab */
+        .stTabs [aria-selected="true"] {
+            background: linear-gradient(135deg, #00843D 0%, #006B2E 100%) !important;
+            color: white !important;
+            border-bottom: 4px solid #FFD700;
+            box-shadow: 0 4px 8px rgba(0, 132, 61, 0.4);
+            transform: scale(1.02);
+        }
+        
+        /* Tab panel content */
+        .stTabs [data-baseweb="tab-panel"] {
+            padding-top: 2rem;
+        }
+        
+        /* Pulse animation for active tab */
+        @keyframes pulse-gold {
+            0%, 100% { border-bottom-color: #FFD700; }
+            50% { border-bottom-color: #FFC700; }
+        }
+        
+        .stTabs [aria-selected="true"] {
+            animation: pulse-gold 2s ease-in-out infinite;
+        }
+        
+        /* Focus indicator */
+        .stTabs [data-baseweb="tab"]:focus {
+            outline: 3px solid #FFD700;
+            outline-offset: 2px;
+        }
+        
+        /* ============================================
+           ADDITIONAL UI ENHANCEMENTS
+           ============================================ */
+        
+        /* Metric containers */
+        [data-testid="stMetricValue"] {
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: #00843D;
+        }
+        
+        /* Buttons */
+        .stButton > button {
+            border-radius: 8px;
+            transition: all 0.2s;
+        }
+        
+        .stButton > button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        
+        /* Info boxes */
+        .stAlert {
+            border-radius: 8px;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+
+
 def render_logo():
-    """Render brand title and subtitle"""
+    """Render brand title and subtitle with custom styling"""
+    # Apply custom CSS styles
+    apply_custom_styles()
+    
     st.markdown(f"## 🦢 {BRANDCONFIG['brand_name']}")
     st.caption(BRANDCONFIG.get('subtitle', 'Enterprise-Grade Agentic AI on Databricks'))
 
