@@ -58,29 +58,66 @@ def render_logo():
     st.markdown(f"## 🏦 {BRANDCONFIG['brand_name']}")
     st.caption(BRANDCONFIG["subtitle"])
 
-# Advisory functions (keep all your existing ones)
+# Advisory functions
 def render_member_card(member, is_selected=False, country="Australia"):
+    """Render member card with flags, colors, and country-specific currency."""
+    
+    # Complete color/currency config with ALL keys
     colors = {
-        "Australia": {"flag": "🇦🇺", "primary": "#FFD700", "secondary": "#00843D"},
-        "USA": {"flag": "🇺🇸", "primary": "#B22234", "secondary": "#3C3B6E"},
-        "United Kingdom": {"flag": "🇬🇧", "primary": "#C8102E", "secondary": "#012169"},
-        "India": {"flag": "🇮🇳", "primary": "#FF9933", "secondary": "#138808"},
+        "Australia": {
+            "flag": "🇦🇺", 
+            "primary": "#FFD700", 
+            "secondary": "#00843D", 
+            "currency": "A$"
+        },
+        "USA": {
+            "flag": "🇺🇸", 
+            "primary": "#B22234", 
+            "secondary": "#3C3B6E", 
+            "currency": "$"
+        },
+        "United Kingdom": {
+            "flag": "��🇧", 
+            "primary": "#C8102E", 
+            "secondary": "#012169", 
+            "currency": "£"
+        },
+        "India": {
+            "flag": "🇮🇳", 
+            "primary": "#FF9933", 
+            "secondary": "#138808", 
+            "currency": "₹"
+        }
     }
+    
+    # Get theme for country (with fallback to Australia)
     t = colors.get(country, colors["Australia"])
+    
+    # Styling based on selection state
     border = f"5px solid {t['secondary']}" if is_selected else "1px solid #CCC"
     bg = f"linear-gradient(135deg,{t['primary']}22,{t['secondary']}10)" if is_selected else "#FFF"
     shadow = "0 6px 14px rgba(0,0,0,0.15)" if is_selected else "0 1px 4px rgba(0,0,0,0.08)"
-    label = member.get("name","Unknown")
-    age = member.get("age","N/A")
-    bal = member.get("super_balance",0)
-    bal_fmt = f"{int(bal):,}"
-    st.markdown(f"""
+    
+    # Extract member data
+    label = member.get("name", "Unknown")
+    age = member.get("age", "N/A")
+    bal = member.get("super_balance", 0)
+    
+    # Format balance with country-specific currency
+    bal_fmt = f"{t['currency']}{int(bal):,}"
+    
+    # Render card
+    st.markdown(
+        f"""
         <div style="background:{bg};border:{border};box-shadow:{shadow};
                     border-radius:10px;padding:14px;margin-bottom:10px;">
             <b>{t['flag']} {label}</b><br>
-            Age: {age} • Balance: ${bal_fmt}
+            Age: {age} • Balance: {bal_fmt}
         </div>
-    """,unsafe_allow_html=True)
+        """,
+        unsafe_allow_html=True
+    )
+
 
 def render_country_welcome(country, intro, disclaimer):
     # Select appropriate flag for the chosen country

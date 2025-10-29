@@ -29,7 +29,7 @@ NATIONAL_COLORS = {
 # Main LLM for synthesis and planning (Claude Opus 4.1)
 MAIN_LLM_ENDPOINT = "databricks-claude-opus-4-1"
 MAIN_LLM_TEMPERATURE = 0.2
-MAIN_LLM_MAX_TOKENS = 750 
+MAIN_LLM_MAX_TOKENS = 750
 MAX_VALIDATION_ATTEMPTS = 2
 
 # Judge LLM for validation (Claude Sonnet 4)
@@ -87,7 +87,7 @@ MEMBER_PROFILES_TABLE = "member_profiles"
 # SQL Warehouse ID - Update with your warehouse ID or configure in UI
 # Find your warehouse ID: SQL → SQL Warehouses → Select warehouse → Copy ID
 # Can also be configured via UI: Governance → Configuration tab
-SQL_WAREHOUSE_ID = "YOUR_WAREHOUSE_ID_HERE"
+SQL_WAREHOUSE_ID = "4b9b953939869799"
 
 # ============================================================================
 # Helper Functions
