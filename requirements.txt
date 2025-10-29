@@ -1,0 +1,4 @@
+streamlit>=1.37.0
+pandas>=2.0.0
+mlflow>=2.8.0
+
