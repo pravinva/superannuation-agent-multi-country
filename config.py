@@ -87,7 +87,7 @@ MEMBER_PROFILES_TABLE = "member_profiles"
 # SQL Warehouse ID - Update with your warehouse ID or configure in UI
 # Find your warehouse ID: SQL → SQL Warehouses → Select warehouse → Copy ID
 # Can also be configured via UI: Governance → Configuration tab
-SQL_WAREHOUSE_ID = "4b9b953939869799"
+SQL_WAREHOUSE_ID = "Your Warehouse ID"
 
 # ============================================================================
 # Helper Functions
