@@ -80,46 +80,120 @@ class SuperAdvisorAgent:
     # ========== EXISTING METHODS (UNCHANGED) ==========
     
     def classify_query_topic(self, user_query):
-        """Use Databricks ai_classify to determine if query is retirement-related."""
+        """
+        Hybrid classification: keyword fast-path + ai_classify fallback.
+        Uses comprehensive multi-country retirement keywords for instant classification,
+        falling back to Databricks ai_classify only for ambiguous queries.
+         """
         try:
-            escaped_query = user_query.replace("'", "''")
+           # FAST PATH: Instant keyword-based classification (0ms, $0 cost)
+           # Check for obvious retirement-related keywords first
+           retirement_keywords = [
+               # US retirement accounts
+               '401k', '401(k)', 'ira', 'roth', 'roth ira', 'traditional ira', 
+               'tsp', 'thrift savings', 'simple ira', 'sep ira',
             
-            query = f"""
-            SELECT ai_classify(
-                '{escaped_query}',
-                ARRAY('retirement_planning', 'superannuation_withdrawal', 'pension_benefits', 
-                      'tax_questions', 'contribution_rules', 'off_topic')
-            ) AS topic_classification
-            """
+               # Australia retirement
+               'super', 'superannuation', 'smsf', 'concessional', 'non-concessional',
+               'preservation age', 'transition to retirement', 'ttr', 
+               'self-managed super', 'industry super',
             
-            statement = self.w.statement_execution.execute_statement(
-                warehouse_id=SQL_WAREHOUSE_ID,
-                statement=query,
-                wait_timeout="10s"
-            )
+               # India retirement
+               'epf', 'pf', 'ppf', 'nps', 'eps', 'vpf', 'provident fund',
+               'national pension', 'employees provident', 'voluntary provident',
             
-            while statement.status.state in [StatementState.PENDING, StatementState.RUNNING]:
-                time.sleep(0.2)
-                statement = self.w.statement_execution.get_statement(statement.statement_id)
+               # UK retirement - Pensions
+               'sipp', 'lgps', 'workplace pension', 'occupational pension', 
+               'state pension', 'personal pension', 'defined benefit', 
+               'defined contribution', 'final salary', 'db pension', 'dc pension',
             
-            if statement.status.state == StatementState.SUCCEEDED and statement.result and statement.result.data_array:
-                classification = statement.result.data_array[0][0]
-                is_on_topic = (classification != "off_topic")
-                printf(f"🏷️ Query classified as: '{classification}'")
-                
-                return {
-                    "is_on_topic": is_on_topic,
-                    "classification": classification,
-                    "confidence": 1.0  # ai_classify is deterministic
-                }
-            else:
-                printf("⚠️ ai_classify returned no results, defaulting to on-topic")
-                return {"is_on_topic": True, "classification": "unknown", "confidence": 0.5}
+               # UK retirement - Savings accounts
+               'lisa', 'lifetime isa', 'pension pot', 'pension drawdown',
+               'stocks and shares isa', 'pension commencement lump sum', 'pcls',
+            
+               # UK regulatory/tax terms
+               'salary sacrifice', 'auto-enrolment', 'auto enrolment',
+               'annual allowance', 'lifetime allowance', 'tax relief',
+               'higher rate tax relief', 'pension credit',
+            
+               # Universal retirement terms
+               'retirement', 'retire', 'retiring', 'pension', 'pensioner',
+               'contribution', 'contributions', 'withdraw', 'withdrawal',
+               'early access', 'hardship', 'social security', 'centrelink',
+               'age pension', 'retirement age', 'retirement income',
+               'retirement planning', 'retirement savings', 'retirement benefit'
+           ]
         
+           query_lower = user_query.lower()
+        
+           # If ANY retirement keyword is found, immediately classify as on-topic
+           if any(keyword in query_lower for keyword in retirement_keywords):
+               printf("🚀 Fast-path: Retirement keyword detected, skipping ai_classify")
+               return {
+                   'is_on_topic': True,
+                   'classification': 'retirement_query',
+                   'confidence': 1.0
+               }
+        
+           # SLOW PATH: ai_classify for ambiguous queries (~0.5-2s, ~$0.001)
+           # Only reaches here if no retirement keywords were found
+           printf("🔍 No keywords found, calling ai_classify...")
+        
+           escaped_query = user_query.replace("'", "''")
+        
+           query = f"""
+           SELECT ai_classify(
+               '{escaped_query}',
+               ARRAY(
+                   'retirement_planning', 'superannuation_withdrawal', 'pension_benefits',
+                   'contribution_rules', 'tax_questions', 'early_access', 'early_withdrawal',
+                   'hardship_withdrawal', 'account_access',
+                   '401k', '401(k)', 'IRA', 'Roth', 'TSP',
+                   'EPF', 'PF', 'VPF', 'EPS', 'NPS', 'PPF',
+                   'SIPP', 'LGPS', 'LISA',
+                   'off_topic'
+               )
+           ) AS topic_classification
+           """
+
+           statement = self.w.statement_execution.execute_statement(
+               warehouse_id=SQL_WAREHOUSE_ID,
+               statement=query,
+               wait_timeout="10s"
+           )
+
+           while statement.status.state in [StatementState.PENDING, StatementState.RUNNING]:
+               time.sleep(0.2)
+               statement = self.w.statement_execution.get_statement(statement.statement_id)
+
+           if statement.status.state == StatementState.SUCCEEDED and statement.result and statement.result.data_array:
+               classification = statement.result.data_array[0][0]
+               is_on_topic = (classification != "off_topic")
+               printf(f"🏷️  Query classified as: '{classification}'")
+ 
+               return {
+                   "is_on_topic": is_on_topic,
+                   "classification": classification,
+                   "confidence": 1.0  # ai_classify is deterministic
+               }
+           else:
+               # ai_classify failed or returned no results
+               printf("⚠️ ai_classify returned no results, defaulting to on-topic")
+               return {
+                   "is_on_topic": True,
+                   "classification": "unknown",
+                   "confidence": 0.5
+               }
+            
         except Exception as e:
-            printf(f"❌ Error in ai_classify: {e}")
-            return {"is_on_topic": True, "classification": "error", "confidence": 0.0}
-    
+           printf(f"❌ Error in ai_classify: {e}")
+           # On error, default to on-topic to avoid blocking legitimate queries
+           return {
+               "is_on_topic": True,
+               "classification": "error",
+               "confidence": 0.0
+           }
+ 
     def get_authority(self, country, tool_type):
         """Get authority for a country and tool type."""
         return self.AUTHORITY_MAP.get(country, {}).get(tool_type, "Unknown Authority")

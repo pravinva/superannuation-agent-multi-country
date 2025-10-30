@@ -77,7 +77,7 @@ def render_member_card(member, is_selected=False, country="Australia"):
             "currency": "$"
         },
         "United Kingdom": {
-            "flag": "��🇧", 
+            "flag": "🇬🇧", 
             "primary": "#C8102E", 
             "secondary": "#012169", 
             "currency": "£"
