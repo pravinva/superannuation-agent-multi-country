@@ -70,6 +70,157 @@ The ReAct pattern provides several advantages over traditional RAG or single-sho
 
 Our implementation (`react_loop.py`) separates the agentic loop from orchestration, making it reusable and testable.
 
+### Code Flow Architecture
+
+Understanding how the components interact is crucial for maintaining and extending the system:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        app.py (UI Layer)                        │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │ User selects country & member profile                    │  │
+│  │ User enters query → clicks "Get Recommendation"         │  │
+│  └───────────────────────────┬──────────────────────────────┘  │
+└──────────────────────────────┼──────────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────────┐
+│              agent_processor.py (Orchestration)                 │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │ agent_query() function:                                  │  │
+│  │ 1. Initialize observability (MLflow)                    │  │
+│  │ 2. Track Phase 1: Data Retrieval                       │  │
+│  │ 3. Create SuperAdvisorAgent instance                    │  │
+│  │ 4. Track Phase 2: Anonymization                        │  │
+│  │ 5. Call agent.process_query()                           │  │
+│  │ 6. Track Phases 3-6: Classification, Tools, Synthesis  │  │
+│  │ 7. Track Phase 7: Name Restoration                     │  │
+│  │ 8. Track Phase 8: Audit Logging                        │  │
+│  │ 9. End observability run                                │  │
+│  └───────────────────────────┬──────────────────────────────┘  │
+└───────────────────────────────┼──────────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                   agent.py (Agent Class)                        │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │ SuperAdvisorAgent.process_query():                       │  │
+│  │ 1. Get member profile (via tools.get_member_profile())   │  │
+│  │ 2. Build context with anonymization                      │  │
+│  │ 3. Create AgentState                                     │  │
+│  │ 4. Delegate to react_loop.run_agentic_loop()            │  │
+│  └───────────────────────────┬──────────────────────────────┘  │
+└──────────────────────────────┼──────────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────────┐
+│              react_loop.py (Core Agentic Loop)                  │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │ ReactAgenticLoop.run_agentic_loop():                    │  │
+│  │                                                          │  │
+│  │ PHASE 3: Classification                                 │  │
+│  │  └─> classifier.classify_query_topic()                  │  │
+│  │      ├─ Stage 1: Regex patterns                         │  │
+│  │      ├─ Stage 2: Embedding similarity                    │  │
+│  │      └─ Stage 3: LLM fallback                           │  │
+│  │                                                          │  │
+│  │ PHASE 4: Tool Selection & Execution                     │  │
+│  │  └─> reason_and_select_tools()                          │  │
+│  │      └─> act_execute_tools()                            │  │
+│  │          └─> tools.call_tool()                           │  │
+│  │              └─> Unity Catalog SQL functions            │  │
+│  │                                                          │  │
+│  │ PHASE 5: Response Synthesis                            │  │
+│  │  └─> synthesize_response()                              │  │
+│  │      └─> agent.generate_response()                      │  │
+│  │          └─> Foundation Model API (Claude)              │  │
+│  │                                                          │  │
+│  │ PHASE 6: Validation                                     │  │
+│  │  └─> observe_and_validate()                             │  │
+│  │      └─> validator.validate()                           │  │
+│  │          └─> Foundation Model API (Judge LLM)           │  │
+│  │                                                          │  │
+│  │ Return result_dict with response, citations, etc.       │  │
+│  └───────────────────────────┬──────────────────────────────┘  │
+└──────────────────────────────┼──────────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────────┐
+│              agent_processor.py (Completion)                    │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │ 1. Extract results from result_dict                      │  │
+│  │ 2. Calculate cost breakdown                              │  │
+│  │ 3. Log to governance table                               │  │
+│  │ 4. End MLflow run                                        │  │
+│  │ 5. Return structured response to app.py                  │  │
+│  └──────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Component Responsibilities
+
+**app.py (UI Layer)**
+- Streamlit interface for user interaction
+- Country and member profile selection
+- Query input and result display
+- Progress tracking UI
+
+**agent_processor.py (Orchestration Layer)**
+- High-level query orchestration
+- Phase tracking (8 phases)
+- MLflow observability initialization
+- Governance logging (Unity Catalog)
+- Cost calculation and reporting
+- Error handling and recovery
+
+**agent.py (Agent Class)**
+- Agent instance coordination
+- Tool initialization (SuperAdvisorTools)
+- Validator initialization (LLMJudgeValidator)
+- Prompts registry initialization
+- Creates ReactAgenticLoop instance
+- Data preparation (member profile, context building)
+- Utility methods (currency formatting, authority mapping)
+
+**react_loop.py (Core Agentic Loop)**
+- Implements ReAct pattern (REASON → ACT → OBSERVE)
+- Query classification (3-stage cascade)
+- Tool selection and execution
+- Response synthesis (LLM generation)
+- Response validation (LLM-as-a-Judge)
+- Iterative refinement loop
+
+**Supporting Components:**
+- `classifier.py`: 3-stage cascade classification
+- `validation.py`: LLM-as-a-Judge validation
+- `tools.py`: Unity Catalog function wrappers
+- `country_config.py`: Country-specific configurations
+- `prompts_registry.py`: Prompt versioning and MLflow tracking
+- `observability.py`: MLflow and Lakehouse Monitoring
+- `utils/formatting.py`: Currency formatting, SQL escaping
+- `utils/audit.py`: Governance logging utilities
+- `utils/lakehouse.py`: Unity Catalog SQL utilities
+- `utils/progress.py`: Real-time UI progress tracking
+
+### Key Design Patterns
+
+**Separation of Concerns:**
+- **agent_processor.py**: Infrastructure and orchestration (phase tracking, logging, error handling)
+- **agent.py**: Agent instance coordination (tools, validators, prompts)
+- **react_loop.py**: Core agentic logic (REASON → ACT → OBSERVE)
+- **utils/**: Reusable utilities (formatting, SQL, audit)
+
+**Utility Organization:**
+- `utils/formatting.py`: General formatting utilities (currency, SQL escaping)
+- `utils/audit.py`: Audit logging and governance utilities
+- `utils/lakehouse.py`: Unity Catalog and SQL operations
+- `utils/progress.py`: Real-time UI progress tracking
+
+**Country Configuration:**
+- `country_config.py`: Single source of truth for country-specific settings
+- No hardcoded country logic in agent or react_loop
+- Easy to add new countries by extending configuration
+
 ---
 
 ## Production Best Practices Demonstrated
@@ -430,10 +581,133 @@ multi-country-pension-advisor/
 ├── tools.py                 # Unity Catalog function wrappers
 ├── app.py                   # Streamlit UI
 └── utils/
+    ├── formatting.py        # Currency formatting, SQL escaping
     ├── audit.py             # Governance logging
     ├── lakehouse.py         # Unity Catalog utilities
     └── progress.py          # Real-time progress tracking
 ```
+
+### Code Flow Architecture
+
+Understanding how the components interact is crucial for maintaining and extending the system:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        app.py (UI Layer)                        │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │ User selects country & member profile                    │  │
+│  │ User enters query → clicks "Get Recommendation"         │  │
+│  └───────────────────────────┬──────────────────────────────┘  │
+└───────────────────────────────┼──────────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────────┐
+│              agent_processor.py (Orchestration)                 │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │ agent_query() function:                                  │  │
+│  │ 1. Initialize observability (MLflow)                    │  │
+│  │ 2. Track Phase 1: Data Retrieval                       │  │
+│  │ 3. Create SuperAdvisorAgent instance                    │  │
+│  │ 4. Track Phase 2: Anonymization                        │  │
+│  │ 5. Call agent.process_query()                           │  │
+│  │ 6. Track Phases 3-6: Classification, Tools, Synthesis  │  │
+│  │ 7. Track Phase 7: Name Restoration                     │  │
+│  │ 8. Track Phase 8: Audit Logging                        │  │
+│  │ 9. End observability run                                │  │
+│  └───────────────────────────┬──────────────────────────────┘  │
+└───────────────────────────────┼──────────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                   agent.py (Agent Class)                        │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │ SuperAdvisorAgent.process_query():                       │  │
+│  │ 1. Get member profile (via tools.get_member_profile())   │  │
+│  │ 2. Build context with anonymization                      │  │
+│  │ 3. Create AgentState                                     │  │
+│  │ 4. Delegate to react_loop.run_agentic_loop()            │  │
+│  └───────────────────────────┬──────────────────────────────┘  │
+└───────────────────────────────┼──────────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────────┐
+│              react_loop.py (Core Agentic Loop)                  │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │ ReactAgenticLoop.run_agentic_loop():                    │  │
+│  │                                                          │  │
+│  │ PHASE 3: Classification                                 │  │
+│  │  └─> classifier.classify_query_topic()                   │  │
+│  │      ├─ Stage 1: Regex patterns                         │  │
+│  │      ├─ Stage 2: Embedding similarity                    │  │
+│  │      └─ Stage 3: LLM fallback                           │  │
+│  │                                                          │  │
+│  │ PHASE 4: Tool Selection & Execution                     │  │
+│  │  └─> reason_and_select_tools()                          │  │
+│  │      └─> act_execute_tools()                            │  │
+│  │          └─> tools.call_tool()                         │  │
+│  │              └─> Unity Catalog SQL functions            │  │
+│  │                                                          │  │
+│  │ PHASE 5: Response Synthesis                            │  │
+│  │  └─> synthesize_response()                              │  │
+│  │      └─> agent.generate_response()                      │  │
+│  │          └─> Foundation Model API (Claude)             │  │
+│  │                                                          │  │
+│  │ PHASE 6: Validation                                     │  │
+│  │  └─> observe_and_validate()                             │  │
+│  │      └─> validator.validate()                          │  │
+│  │          └─> Foundation Model API (Judge LLM)          │  │
+│  │                                                          │  │
+│  │ Return result_dict with response, citations, etc.       │  │
+│  └───────────────────────────┬──────────────────────────────┘  │
+└──────────────────────────────┼──────────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────────┐
+│              agent_processor.py (Completion)                    │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │ 1. Extract results from result_dict                      │  │
+│  │ 2. Calculate cost breakdown                              │  │
+│  │ 3. Log to governance table                               │  │
+│  │ 4. End MLflow run                                        │  │
+│  │ 5. Return structured response to app.py                  │  │
+│  └──────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Supporting Components
+
+**Configuration & Utilities:**
+- `country_config.py`: Centralized country configurations (currency, authorities, regulations)
+- `prompts_registry.py`: Prompt versioning and MLflow tracking
+- `utils/formatting.py`: Currency formatting, SQL escaping utilities
+- `utils/audit.py`: Governance logging and audit trail utilities
+- `utils/lakehouse.py`: Unity Catalog SQL execution utilities
+- `utils/progress.py`: Real-time UI progress tracking
+
+**Core Logic:**
+- `classifier.py`: 3-stage cascade classification (Regex → Embedding → LLM)
+- `validation.py`: LLM-as-a-Judge validation with multiple modes
+- `tools.py`: Unity Catalog function wrappers
+- `observability.py`: MLflow and Lakehouse Monitoring integration
+
+### Key Design Patterns
+
+**Separation of Concerns:**
+- **agent_processor.py**: Infrastructure and orchestration (phase tracking, logging, error handling)
+- **agent.py**: Agent instance coordination (tools, validators, prompts)
+- **react_loop.py**: Core agentic logic (REASON → ACT → OBSERVE)
+- **utils/**: Reusable utilities (formatting, SQL, audit)
+
+**Utility Organization:**
+- `utils/formatting.py`: General formatting utilities (currency, SQL escaping)
+- `utils/audit.py`: Audit logging and governance utilities
+- `utils/lakehouse.py`: Unity Catalog and SQL operations
+- `utils/progress.py`: Real-time UI progress tracking
+
+**Country Configuration:**
+- `country_config.py`: Single source of truth for country-specific settings
+- No hardcoded country logic in agent or react_loop
+- Easy to add new countries by extending configuration
 
 ### Adding a New Country
 
