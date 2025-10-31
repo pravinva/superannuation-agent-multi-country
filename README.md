@@ -734,6 +734,109 @@ Understanding how the components interact is crucial for maintaining and extendi
 
 ---
 
+## Testing & Evaluation
+
+### Offline Evaluation
+
+The system includes built-in offline evaluation capabilities for batch testing and validation. Offline evaluation allows you to test multiple queries at once and analyze results systematically.
+
+#### Using Offline Evaluation via UI
+
+1. **Navigate to Governance → Config Tab**
+   - Open the Streamlit app and go to the Governance page
+   - Click on the "⚙️ Config" tab
+
+2. **Upload Evaluation CSV**
+   - Scroll to "🧪 Offline Evaluation" section
+   - Upload a CSV file with the required columns (see format below)
+   - Preview the data before running
+
+3. **Run Evaluation**
+   - Click "▶️ Run Offline Evaluation"
+   - Results are processed and logged to MLflow
+   - View summary statistics and sample results
+
+#### CSV Format
+
+The evaluation CSV must contain the following columns:
+
+```csv
+user_id,country,query_str
+AU001,AU,"How much superannuation will I have at retirement?"
+US002,US,"What's my 401k balance?"
+UK003,UK,"When can I access my pension?"
+```
+
+**Column Requirements:**
+- `user_id`: Member ID (must exist in `member_profiles` table)
+- `country`: Country code (AU, US, UK, IN) or display name (Australia, USA, etc.)
+- `query_str`: The query to evaluate (can also be `query_string`)
+
+**Example CSV:**
+```csv
+user_id,country,query_str
+AU001,AU,"What is my preservation age?"
+AU002,AU,"Can I withdraw my super before age 60?"
+US001,US,"What are the RMD rules for my 401k?"
+UK001,UK,"When can I access my state pension?"
+```
+
+#### Results & Logging
+
+**MLflow Integration:**
+- All evaluation runs are logged to `MLFLOW_OFFLINE_EVAL_PATH` (configurable in `config.py`)
+- Each query in the batch creates a separate MLflow run
+- Full observability: costs, validation results, tool usage tracked per query
+
+**Result Structure:**
+```python
+{
+    "total_queries": 10,
+    "sample_result": {
+        "row_index": 0,
+        "user_id": "AU001",
+        "country": "AU",
+        "query": "What is my preservation age?",
+        "session_id": "uuid-here",
+        "result": {
+            "answer": "...",
+            "citations": [...],
+            "cost": 0.003,
+            "validation_passed": True,
+            ...
+        }
+    }
+}
+```
+
+#### Command-Line Usage
+
+You can also run offline evaluation from the command line:
+
+```bash
+# Offline evaluation (batch CSV)
+python run_evaluation.py --mode offline --csv_path eval_queries.csv
+
+# Online evaluation (single query)
+python run_evaluation.py --mode online \
+    --query_str "What is my preservation age?" \
+    --user_id AU001 \
+    --country AU
+```
+
+#### Evaluation Code Location
+
+- **Evaluation Script**: `run_evaluation.py`
+- **UI Integration**: `ui_components.py` → `render_configuration_tab()` (lines 747-812)
+- **MLflow Path**: Configured in `config.py` → `MLFLOW_OFFLINE_EVAL_PATH`
+
+**Functions:**
+- `offline_eval(csv_path)`: Batch evaluation on CSV file
+- `online_eval(query_str, user_id, country)`: Single query evaluation
+- `run_csv_evaluation(uploaded_csv)`: Streamlit wrapper for UI
+
+---
+
 ## Documentation
 
 ### Core Guides
