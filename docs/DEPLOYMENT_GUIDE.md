@@ -2,7 +2,7 @@
 
 ## Overview
 
-This guide covers deployment options for the Multi-Country Pension Advisor system on Databricks. All deployment methods use Databricks-native tools and services.
+This guide covers deployment of the Multi-Country Pension Advisor system on Databricks using Databricks Asset Bundles (DABS) for infrastructure and Databricks Apps for the Streamlit application.
 
 ## Architecture Components
 
@@ -12,19 +12,11 @@ The system consists of:
 3. **MLflow**: Experiment tracking and prompt registry
 4. **Monitoring**: Lakehouse Monitoring setup
 
-## Deployment Options
+## Deployment Method
 
-### Option 1: DABS + Databricks Apps (Recommended)
+### DABS + Databricks Apps
 
-Use Databricks Asset Bundles (DABS) for infrastructure and Databricks Apps for Streamlit deployment.
-
-**Best for**: Production Databricks environments requiring native integration
-
-### Option 2: DABS + Workspace Files + Jobs
-
-Use DABS for infrastructure and deploy Streamlit app to workspace files, then run as a Databricks Job.
-
-**Best for**: CI/CD pipelines and automated deployments
+Use Databricks Asset Bundles (DABS) for infrastructure and Databricks Apps for Streamlit deployment. This is the recommended approach for production Databricks environments.
 
 ---
 
@@ -109,7 +101,7 @@ databricks bundle deploy --target production
 
 ## Part 2: Streamlit App Deployment
 
-### Option 1: Deploy to Databricks Apps
+### Deploy to Databricks Apps
 
 Deploy Streamlit app as a Databricks App using `app.yaml`.
 
@@ -129,191 +121,6 @@ name: Deploy to Databricks Apps
 on:
   push:
     branches: [ main, develop ]
-  workflow_dispatch:
-
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Setup Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
-      
-      - name: Install dependencies
-        run: |
-          pip install databricks-cli
-          pip install -r requirements.txt
-      
-      - name: Authenticate Databricks
-        env:
-          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
-          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
-        run: |
-          databricks auth login --host $DATABRICKS_HOST --token $DATABRICKS_TOKEN
-      
-      - name: Upload files to workspace
-        env:
-          DATABRICKS_WORKSPACE_PATH: ${{ secrets.DATABRICKS_WORKSPACE_PATH }}
-        run: |
-          # Upload application files
-          databricks workspace import_dir . "$DATABRICKS_WORKSPACE_PATH/app" \
-            --exclude-hidden-files \
-            --exclude '*.md' \
-            --exclude '__pycache__' \
-            --exclude '.git'
-      
-      - name: Deploy Databricks App
-        env:
-          DATABRICKS_WORKSPACE_PATH: ${{ secrets.DATABRICKS_WORKSPACE_PATH }}
-        run: |
-          # Note: Databricks Apps deployment via CLI may require additional setup
-          # This step uploads files - app.yaml will be used by Databricks Apps platform
-          echo "App files uploaded. Configure Databricks Apps in UI using app.yaml"
-          echo "App location: $DATABRICKS_WORKSPACE_PATH/app/app.yaml"
-```
-
-**Limitations**: Databricks Apps deployment via CLI is limited. You may need to:
-1. Upload files via this workflow
-2. Manually configure the app in Databricks UI using `app.yaml`
-
----
-
-### Option 2: Deploy to Workspace Files + Run as Job
-
-Deploy files to workspace and create a Databricks Job to run Streamlit.
-
-#### .github/workflows/deploy-workspace-job.yml
-
-```yaml
-name: Deploy to Databricks Workspace (Job)
-
-on:
-  push:
-    branches: [ main ]
-  workflow_dispatch:
-
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Setup Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
-      
-      - name: Install dependencies
-        run: |
-          pip install databricks-cli databricks-sdk
-          pip install -r requirements.txt
-      
-      - name: Authenticate Databricks
-        env:
-          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
-          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
-        run: |
-          databricks auth login --host $DATABRICKS_HOST --token $DATABRICKS_TOKEN
-      
-      - name: Upload application files
-        env:
-          DATABRICKS_WORKSPACE_PATH: ${{ secrets.DATABRICKS_WORKSPACE_PATH }}
-        run: |
-          # Upload main application
-          databricks workspace import_dir . "$DATABRICKS_WORKSPACE_PATH/app" \
-            --exclude-hidden-files \
-            --exclude '*.md' \
-            --exclude '__pycache__' \
-            --exclude '.git' \
-            --exclude 'docs' \
-            --exclude 'sql_ddls'
-      
-      - name: Create/Update Databricks Job
-        env:
-          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
-          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
-          DATABRICKS_WORKSPACE_PATH: ${{ secrets.DATABRICKS_WORKSPACE_PATH }}
-        run: |
-          python << EOF
-          from databricks.sdk import WorkspaceClient
-          from databricks.sdk.service.jobs import JobSettings, Task, NotebookTask
-          
-          w = WorkspaceClient(host="$DATABRICKS_HOST", token="$DATABRICKS_TOKEN")
-          
-          job_settings = JobSettings(
-              name="Pension Advisor Streamlit App",
-              tasks=[
-                  Task(
-                      task_key="run_streamlit",
-                      notebook_task=NotebookTask(
-                          notebook_path="$DATABRICKS_WORKSPACE_PATH/app/run_streamlit.py"
-                      ),
-                      new_cluster={
-                          "spark_version": "13.3.x-scala2.12",
-                          "node_type_id": "i3.xlarge",
-                          "num_workers": 0,
-                          "spark_conf": {
-                              "spark.databricks.cluster.profile": "singleNode"
-                          }
-                      },
-                      libraries=[
-                          {"pypi": {"package": "streamlit>=1.37.0"}},
-                          {"pypi": {"package": "mlflow>=2.8.0"}},
-                          {"pypi": {"package": "databricks-sdk>=0.12.0"}},
-                          {"pypi": {"package": "pandas>=2.0.0"}},
-                          {"pypi": {"package": "plotly>=5.14.0"}}
-                      ]
-                  )
-              ],
-              max_concurrent_runs=1
-          )
-          
-          # Check if job exists
-          jobs = w.jobs.list()
-          existing_job = None
-          for job in jobs:
-              if job.settings.name == "Pension Advisor Streamlit App":
-                  existing_job = job
-                  break
-          
-          if existing_job:
-              print(f"Updating job {existing_job.job_id}")
-              w.jobs.update(job_id=existing_job.job_id, new_settings=job_settings)
-          else:
-              print("Creating new job")
-              job = w.jobs.create(**job_settings.as_dict())
-              print(f"Job created: {job.job_id}")
-          EOF
-```
-
-**Note**: Requires `run_streamlit.py` notebook that wraps the Streamlit app.
-
----
-
-## Part 3: Combined Workflow (DABS + Streamlit)
-
-Complete workflow that deploys both infrastructure and application.
-
-### .github/workflows/deploy-complete.yml
-
-```yaml
-name: Complete Deployment
-
-on:
-  push:
-    branches: [ main ]
-    paths:
-      - 'sql_ddls/**'
-      - '*.py'
-      - 'app.yaml'
-      - 'requirements.txt'
   workflow_dispatch:
 
 jobs:
@@ -372,25 +179,34 @@ jobs:
         run: |
           databricks auth login --host $DATABRICKS_HOST --token $DATABRICKS_TOKEN
       
-      - name: Upload application files
+      - name: Upload files to workspace
         env:
           DATABRICKS_WORKSPACE_PATH: ${{ secrets.DATABRICKS_WORKSPACE_PATH }}
         run: |
+          # Upload application files
           databricks workspace import_dir . "$DATABRICKS_WORKSPACE_PATH/app" \
             --exclude-hidden-files \
             --exclude '*.md' \
             --exclude '__pycache__' \
             --exclude '.git'
       
-      - name: Deploy notification
+      - name: Deploy Databricks App
+        env:
+          DATABRICKS_WORKSPACE_PATH: ${{ secrets.DATABRICKS_WORKSPACE_PATH }}
         run: |
-          echo "Deployment complete!"
-          echo "Access app at: ${{ secrets.DATABRICKS_HOST }}/apps"
+          # Note: Databricks Apps deployment via CLI may require additional setup
+          # This step uploads files - app.yaml will be used by Databricks Apps platform
+          echo "App files uploaded. Configure Databricks Apps in UI using app.yaml"
+          echo "App location: $DATABRICKS_WORKSPACE_PATH/app/app.yaml"
 ```
+
+**Limitations**: Databricks Apps deployment via CLI is limited. You may need to:
+1. Upload files via this workflow
+2. Manually configure the app in Databricks UI using `app.yaml`
 
 ---
 
-## Part 4: Environment Configuration
+## Part 3: Environment Configuration
 
 ### GitHub Secrets Setup
 
@@ -421,7 +237,7 @@ SQL_WAREHOUSE_ID=dev-warehouse-id
 
 ---
 
-## Part 5: Post-Deployment Steps
+## Part 4: Post-Deployment Steps
 
 ### 1. Verify Infrastructure
 
@@ -462,14 +278,14 @@ monitor = obs.setup_lakehouse_monitoring(
 
 ### 4. Test Application
 
-1. Access Streamlit app via configured deployment method
+1. Access Streamlit app via Databricks Apps
 2. Run a test query
 3. Verify governance logging
 4. Check MLflow experiment tracking
 
 ---
 
-## Part 6: Troubleshooting
+## Part 5: Troubleshooting
 
 ### Common Issues
 
@@ -477,7 +293,7 @@ monitor = obs.setup_lakehouse_monitoring(
 - **Solution**: Verify `databricks.yml` syntax and workspace permissions
 
 **Issue**: Streamlit app not accessible
-- **Solution**: Check deployment method configuration and network access
+- **Solution**: Check Databricks Apps configuration and ensure app.yaml is properly configured
 
 **Issue**: MLflow experiments not found
 - **Solution**: Verify experiment path in `config.py` matches workspace
@@ -494,29 +310,9 @@ databricks auth test
 # List workspace files
 databricks workspace ls /Workspace/Users/
 
-# Check job status
-databricks jobs list
-
-# View app logs (if deployed as job)
-databricks jobs runs list --job-id <job-id>
+# Check deployed bundles
+databricks bundle list
 ```
-
----
-
-## Deployment Comparison
-
-| Method | Pros | Cons | Best For |
-|--------|------|------|----------|
-| DABS + Databricks Apps | Native Databricks integration, managed platform | Limited CLI support, manual UI configuration | Production Databricks environments |
-| DABS + Workspace Files + Job | Full control, automated deployment, CI/CD friendly | Requires job management, scheduled execution | CI/CD pipelines, automated deployments |
-
----
-
-## Recommendations
-
-1. **Production**: Use DABS for infrastructure + Databricks Apps for Streamlit
-2. **CI/CD**: Use GitHub Actions workflows for automated deployment (Option 2)
-3. **Monitoring**: Setup Lakehouse Monitoring post-deployment
 
 ---
 
