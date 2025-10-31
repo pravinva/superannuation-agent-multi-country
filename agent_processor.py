@@ -7,8 +7,9 @@
 # ✅ FIXED: log_query_event() call with correct parameters
 
 from agent import SuperAdvisorAgent
-from audit.audit_utils import log_query_event
-from progress_utils import initialize_live_progress_tracker, mark_phase_running, mark_phase_complete, mark_phase_error
+from utils.audit import log_query_event
+from utils.progress import initialize_progress_tracker, reset_progress_tracker, mark_phase_running, mark_phase_complete, mark_phase_error
+from observability import create_observability
 import traceback, uuid, time
 import mlflow
 import json
@@ -74,7 +75,7 @@ class AuditLogger:
     
     def log_to_governance_table(self, session_id, user_id, country, query_string,
                                answer, judge_verdict, tools_called, cost, citations,
-                               elapsed, error_info=None):
+                               elapsed, error_info=None, classification_method=None):
         """Log to UC governance audit table"""
         try:
             event_id = str(uuid.uuid4())
@@ -92,12 +93,31 @@ class AuditLogger:
             result_preview_escaped = escape_sql(result_preview)
             judge_response_escaped = escape_sql(str(judge_verdict.get('reasoning', '')))
             judge_verdict_text = judge_verdict.get('verdict', 'UNKNOWN')
+            judge_confidence = judge_verdict.get('confidence', 0.0)  # ✅ Extract confidence
             tool_used = tools_called[0] if tools_called else "none"
             citations_json = json.dumps(citations) if citations else "[]"
             citations_escaped = escape_sql(citations_json)
             error_text = escape_sql(error_info) if error_info else ""
             validation_mode = judge_verdict.get('validation_mode', 'llm_judge')
             validation_attempts = judge_verdict.get('attempts', 1)
+            
+            # ✅ Store classification_method in error_info field if not null (hack for now)
+            # TODO: Add classification_method column to governance table schema
+            if classification_method:
+                if error_text:
+                    error_text = f"classification_method={classification_method}|{error_text}"
+                else:
+                    error_text = f"classification_method={classification_method}"
+            
+            # ✅ Store judge_confidence in judge_response JSON if not already present
+            # Since schema doesn't have judge_confidence column, we'll store it in judge_response as JSON
+            # Format: JSON string with confidence and reasoning
+            import json as json_lib
+            judge_response_data = {
+                'reasoning': judge_verdict.get('reasoning', ''),
+                'confidence': judge_confidence
+            }
+            judge_response_escaped = escape_sql(json_lib.dumps(judge_response_data))
             
             insert_query = f"""
             INSERT INTO {GOVERNANCE_TABLE}
@@ -137,15 +157,19 @@ def agent_query(
     session_id,
     country,
     query_string,
-    validation_mode="llm_judge"
+    validation_mode="llm_judge",
+    enable_observability=True
 ):
     """
-    Orchestrates one advisory query with LIVE PHASE TRACKING
+    Orchestrates one advisory query with LIVE PHASE TRACKING + OBSERVABILITY
     Shows phases dropdown with real-time updates as execution progresses
+    Includes MLflow tracking and Lakehouse Monitoring integration
     """
     
-    # ✅ INITIALIZE PROGRESS TRACKER - SHOWS DROPDOWN!
-    initialize_live_progress_tracker()
+    # ✅ PROGRESS TRACKER - Initialization removed (handled in app.py inside expander)
+    # Only reset is needed here to clear stale state
+    reset_progress_tracker()
+    # initialize_progress_tracker() - REMOVED: Was causing progress to render outside expander
     
     start_all = time.time()
     answer = None
@@ -159,6 +183,22 @@ def agent_query(
     cost_breakdown = {}
     
     logger = AuditLogger()
+    
+    # ✅ INITIALIZE OBSERVABILITY (MLflow + Lakehouse Monitoring)
+    obs = None
+    if enable_observability:
+        try:
+            obs = create_observability(enable_mlflow=True, enable_lakehouse=False)
+            obs.start_agent_run(
+                session_id=session_id,
+                user_id=user_id,
+                country=country,
+                query=query_string,
+                tags={'validation_mode': validation_mode}
+            )
+        except Exception as e:
+            print(f"⚠️ Observability initialization failed: {e}")
+            obs = None
     
     try:
         print(f"\n{'='*70}")
@@ -193,23 +233,10 @@ def agent_query(
         print(f"⏱️  Phase 2 took: {phase2_duration:.2f}s")
         mark_phase_complete('phase_2_anonymization')
         
-        # PHASE 3: TOOL PLANNING
-        print("\n📍 PHASE 3: Tool Planning")
-        phase3_start = time.time()
-        mark_phase_running('phase_3_planning')
-        
-        print(f"✓ Tool planning initialized")
-        
-        phase3_duration = time.time() - phase3_start
-        print(f"⏱️  Phase 3 took: {phase3_duration:.2f}s")
-        mark_phase_complete('phase_3_planning')
-        
-        # PHASE 4: TOOL EXECUTION
-        print("\n📍 PHASE 4: Tool Execution")
+        # ✅ CALL AGENT - This executes classification, tools, synthesis AND validation
+        # Phase tracking happens INSIDE the ReAct loop
         phase4_start = time.time()
-        mark_phase_running('phase_4_execution')
         
-        # ✅ CALL AGENT - This executes tools AND synthesis AND validation
         result_dict = agent.process_query(
             member_id=user_id,
             user_query=query_string,
@@ -217,6 +244,15 @@ def agent_query(
         )
         
         tools_called = result_dict.get('tools_used', [])
+        
+        # ✅ LOG CLASSIFICATION TO OBSERVABILITY
+        if obs and 'classification' in result_dict:
+            obs.log_classification(result_dict['classification'])
+        
+        # ✅ LOG TOOL EXECUTION TO OBSERVABILITY
+        tool_results_dict = result_dict.get('tool_results', {})
+        if obs:
+            obs.log_tool_execution(tools_called, tool_results_dict or {})
         
         # Calculate ONLY tool execution time (subtract synthesis + validation)
         phase4_total = time.time() - phase4_start
@@ -247,13 +283,15 @@ def agent_query(
         print(f"✓ Response synthesized: {len(answer)} chars")
         print(f"⏱️  Phase 5 actual synthesis time: {synthesis_duration:.2f}s")
         
-        # Sleep to simulate the phase timing in UI (optional)
-        time.sleep(0.1)
-        mark_phase_complete('phase_5_synthesis', duration=synthesis_duration)
+        # ✅ Note: Phase tracking for synthesis happens INSIDE ReAct loop
+        # This is just logging the final duration
+        
+        # ✅ LOG SYNTHESIS TO OBSERVABILITY
+        if obs:
+            obs.log_synthesis(synthesis_results)
         
         # PHASE 6: LLM VALIDATION (Extract actual validation duration from results)
         print("\n📍 PHASE 6: LLM Validation")
-        mark_phase_running('phase_6_validation')
         
         validation_results = result_dict.get('validation_results', [])
         
@@ -286,9 +324,8 @@ def agent_query(
         print(f"✓ Validation: {judge_verdict.get('verdict')} ({judge_verdict.get('confidence', 0):.0%} confidence)")
         print(f"⏱️  Phase 6 actual validation time: {validation_duration:.2f}s")
         
-        # Sleep to simulate the phase timing in UI (optional)
-        time.sleep(0.1)
-        mark_phase_complete('phase_6_validation', duration=validation_duration)
+        # ✅ Note: Phase tracking for validation happens INSIDE ReAct loop
+        # This is just logging the final duration
         
         # PHASE 7: NAME RESTORATION
         print("\n📍 PHASE 7: Name Restoration")
@@ -302,9 +339,11 @@ def agent_query(
         mark_phase_complete('phase_7_restoration')
         
         # PHASE 8: AUDIT LOGGING
-        print("\n�� PHASE 8: Audit Logging")
+        print("\n" + "="*70)
+        print("📍 PHASE 8: Audit Logging")
         phase8_start = time.time()
         mark_phase_running('phase_8_logging')
+        print(f"🔄 Logging to MLflow and governance table...")
         
         # 🆕 Calculate SYNTHESIS LLM costs
         total_synthesis_input_tokens = sum(s.get('input_tokens', 0) for s in synthesis_results)
@@ -367,49 +406,63 @@ def agent_query(
         print(f"\n⏱️  PHASE TIMING BREAKDOWN:")
         print(f"   Phase 1 (Retrieval):     {phase1_duration:.2f}s")
         print(f"   Phase 2 (Anonymization): {phase2_duration:.2f}s")
-        print(f"   Phase 3 (Planning):      {phase3_duration:.2f}s")
         print(f"   Phase 4 (Execution):     {phase4_duration:.2f}s")
         print(f"   Phase 5 (Synthesis):     {synthesis_duration:.2f}s (actual LLM time)")
         print(f"   Phase 6 (Validation):    {validation_duration:.2f}s (actual LLM time)")
         print(f"   Phase 7 (Restoration):   {phase7_duration:.2f}s")
         phase8_duration = time.time() - phase8_start
-        print(f"   Phase 8 (Logging):       {phase8_duration:.2f}s (in progress)")
+        print(f"   Phase 8 (Logging):       {phase8_duration:.2f}s")
         print(f"{'='*70}\n")
         
-        # ✅ Log to MLflow
-        logger.log_to_mlflow(
-            session_id=session_id,
-            user_id=user_id,
-            country=country,
-            query_string=query_string,
-            answer=answer,
-            judge_verdict=judge_verdict,
-            tools_called=tools_called,
-            elapsed=elapsed,
-            cost_breakdown=cost_breakdown
-        )
+        # ✅ Log to governance table FIRST (before ending MLflow run)
+        try:
+            # Extract classification method from result_dict
+            classification_info = result_dict.get('classification', {})
+            classification_method = classification_info.get('method', 'unknown')
+            
+            logger.log_to_governance_table(
+                session_id=session_id,
+                user_id=user_id,
+                country=country,
+                query_string=query_string,
+                answer=answer,
+                judge_verdict=judge_verdict,
+                tools_called=tools_called,
+                cost=total_cost,
+                citations=citations,
+                elapsed=elapsed,
+                error_info=None,
+                classification_method=classification_method
+            )
+            print(f"✅ Governance table logged: {session_id}")
+        except Exception as gov_error:
+            print(f"⚠️ Governance logging failed: {gov_error}")
+            import traceback
+            print(traceback.format_exc())
         
-        # ✅ Log to governance table
-        logger.log_to_governance_table(
-            session_id=session_id,
-            user_id=user_id,
-            country=country,
-            query_string=query_string,
-            answer=answer,
-            judge_verdict=judge_verdict,
-            tools_called=tools_called,
-            cost=total_cost,
-            citations=citations,
-            elapsed=elapsed,
-            error_info=None
-        )
-        
-        print(f"✅ MLflow logged: {session_id}")
-        print(f"✅ Governance table logged: {session_id}")
+        # ✅ End observability run AFTER all logging is complete
+        # This ends the MLflow run that was started in start_agent_run()
+        if obs:
+            try:
+                obs.end_agent_run(
+                    response=answer or "",
+                    success=True,
+                    error=None
+                )
+            except Exception as obs_error:
+                print(f"⚠️ Error ending observability run: {obs_error}")
+                # Force end any active MLflow run
+                try:
+                    import mlflow
+                    if mlflow.active_run():
+                        mlflow.end_run()
+                except:
+                    pass
         
         phase8_duration = time.time() - phase8_start
         print(f"⏱️  Phase 8 took: {phase8_duration:.2f}s")
         mark_phase_complete('phase_8_logging')
+        print(f"✅ Phase 8 (Audit Logging) completed successfully")
     
     except Exception as e:
         error_info = traceback.format_exc()
@@ -421,19 +474,7 @@ def agent_query(
         # Mark current phase as error
         mark_phase_error('phase_4_execution', str(e))
         
-        # Log error to MLflow
-        error_judge_verdict = {
-            'passed': False,
-            'verdict': 'ERROR',
-            'confidence': 0,
-            'validation_mode': validation_mode,
-            'attempts': 0
-        }
-        logger.log_to_mlflow(session_id, user_id, country, query_string,
-                            "", error_judge_verdict, tools_called, elapsed, 
-                            cost_breakdown=None, error_info=error_info)
-        
-        # Log error to governance table
+        # Log error to governance table FIRST
         logger.log_to_governance_table(
             session_id=session_id,
             user_id=user_id,
@@ -441,12 +482,67 @@ def agent_query(
             query_string=query_string,
             answer="",
             judge_verdict=error_judge_verdict,
-            tools_called=[],
+            tools_called=tools_called,
             cost=0.0,
             citations=[],
             elapsed=elapsed,
-            error_info=error_info
+            error_info=error_info,
+            classification_method='error'
         )
+        
+        # ✅ End observability run AFTER error logging (but BEFORE logger.log_to_mlflow)
+        # This prevents duplicate MLflow runs
+        if obs:
+            try:
+                obs.end_agent_run(
+                    response=answer or "Error occurred",
+                    success=False,
+                    error=str(e)
+                )
+            except Exception as obs_error:
+                print(f"⚠️ Error ending observability run: {obs_error}")
+                # Force end any active MLflow run
+                try:
+                    import mlflow
+                    if mlflow.active_run():
+                        mlflow.end_run(status="FAILED")
+                except:
+                    pass
+        
+        # ✅ SKIP logger.log_to_mlflow() - obs.end_agent_run() already logged to MLflow
+        # This prevents "run already active" errors
+        
+        judge_verdict = {
+            'verdict': 'ERROR',
+            'confidence': 0.0,
+            'passed': False,
+            'reasoning': f"Error: {str(e)}",
+            'violations': [],
+            'validation_mode': validation_mode,
+            'attempts': 0
+        }
+        
+        error_info = str(e)
+    
+    finally:
+        # ✅ CRITICAL: Only force end MLflow run if STILL active after all operations
+        # Don't end if obs.end_agent_run() already ended it
+        try:
+            import mlflow
+            if mlflow.active_run():
+                # Only end if obs didn't already end it
+                if obs and hasattr(obs, 'current_run') and obs.current_run:
+                    # obs still has a reference, but run is active - this shouldn't happen
+                    print("⚠️ Found orphaned MLflow run, force ending...")
+                    mlflow.end_run()
+                    obs.current_run = None
+                elif not obs:
+                    # obs is None but run is active - end it
+                    print("⚠️ Found active MLflow run without obs, force ending...")
+                    mlflow.end_run()
+        except Exception as final_error:
+            # Silently ignore - don't break execution
+            pass
     
     # Return structured response
     return {

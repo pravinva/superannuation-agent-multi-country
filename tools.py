@@ -1,77 +1,21 @@
-# tools.py - PRODUCTION READY WITH EPF/NPS SPLIT TRANSPARENCY
+# tools.py - Tool Execution Logic (NOT a utility!)
 
 # ✅ Fixed: All type conversion errors resolved
 # ✅ All 4 countries: AU, US, UK, IN
 # ✅ NEW: India tools explicitly show EPF/NPS balance split
 # ✅ All citations loaded from registry
 # ✅ Error handling for failed UC functions
+# ✅ Now uses utils.lakehouse for SQL execution
 
-from databricks.sdk import WorkspaceClient
-from databricks.sdk.service.sql import StatementState
 from config import SQL_WAREHOUSE_ID
+from utils.lakehouse import execute_sql_statement, get_citations
 import time
 
-w = WorkspaceClient()
-
 # ============================================================================
-# HELPER FUNCTIONS
+# NOTE: This file contains DOMAIN LOGIC for tool execution
+# It is NOT a utility file - it implements business logic for
+# retirement calculations across different countries
 # ============================================================================
-
-def execute_query(warehouse_id, query):
-    """Execute SQL query via Databricks SDK"""
-    try:
-        statement = w.statement_execution.execute_statement(
-            warehouse_id=warehouse_id,
-            statement=query,
-            wait_timeout="30s"
-        )
-        
-        while statement.status.state in [StatementState.PENDING, StatementState.RUNNING]:
-            time.sleep(0.5)
-            statement = w.statement_execution.get_statement(statement.statement_id)
-        
-        if statement.status.state == StatementState.SUCCEEDED:
-            return statement
-        else:
-            print(f"Query failed: {statement.status.state}")
-            return None
-    except Exception as e:
-        print(f"Error executing query: {e}")
-        return None
-
-def get_citations(citation_ids, warehouse_id):
-    """Fetch citations from registry"""
-    if not citation_ids:
-        return []
-    
-    ids_str = "', '".join(citation_ids)
-    query = f"""
-    SELECT 
-        citation_id, authority, regulation_name, regulation_code,
-        source_url, description
-    FROM super_advisory_demo.member_data.citation_registry
-    WHERE citation_id IN ('{ids_str}')
-    ORDER BY citation_id
-    """
-    
-    try:
-        result = execute_query(warehouse_id, query)
-        if not result or not result.result or not result.result.data_array:
-            return []
-        
-        citations = []
-        for row in result.result.data_array:
-            citations.append({
-                'citation_id': row[0],
-                'authority': row[1],
-                'regulation': f"{row[2]} ({row[3]})",
-                'source_url': row[4],
-                'description': row[5]
-            })
-        return citations
-    except Exception as e:
-        print(f"⚠️ Error fetching citations: {e}")
-        return []
 
 # ============================================================================
 # AUSTRALIA TOOLS
@@ -109,7 +53,7 @@ def _call_au_tool(tool_id, member_id, profile, withdrawal_amount, warehouse_id):
     else:
         return {"error": f"Unknown tool_id: {tool_id}"}
     
-    result = execute_query(warehouse_id, query)
+    result = execute_sql_statement(query, warehouse_id)
     duration = time.time() - start_time
     
     if not result or not result.result or not result.result.data_array:
@@ -168,7 +112,7 @@ def _call_us_tool(tool_id, member_id, profile, withdrawal_amount, warehouse_id):
     else:
         return {"error": f"Unknown tool_id: {tool_id}"}
     
-    result = execute_query(warehouse_id, query)
+    result = execute_sql_statement(query, warehouse_id)
     duration = time.time() - start_time
     
     if not result or not result.result or not result.result.data_array:
@@ -231,7 +175,7 @@ def _call_uk_tool(tool_id, member_id, profile, withdrawal_amount, warehouse_id):
     else:
         return {"error": f"Unknown tool_id: {tool_id}"}
     
-    result = execute_query(warehouse_id, query)
+    result = execute_sql_statement(query, warehouse_id)
     duration = time.time() - start_time
     
     if not result or not result.result or not result.result.data_array:
@@ -345,7 +289,7 @@ def _call_in_tool(tool_id, member_id, profile, withdrawal_amount, warehouse_id):
     else:
         return {"error": f"Unknown tool_id: {tool_id}"}
     
-    result = execute_query(warehouse_id, query)
+    result = execute_sql_statement(query, warehouse_id)
     duration = time.time() - start_time
     
     if not result or not result.result or not result.result.data_array:
@@ -373,7 +317,7 @@ def _call_in_tool(tool_id, member_id, profile, withdrawal_amount, warehouse_id):
 
 def call_individual_tool(tool_id, member_id, withdrawal_amount, country, warehouse_id):
     """Call a single UC function - FIXED for all countries"""
-    from data_utils import get_member_by_id
+    from utils.lakehouse import get_member_by_id
     
     profile = get_member_by_id(member_id)
     if not profile or "error" in profile:
@@ -411,7 +355,7 @@ class SuperAdvisorTools:
     
     def get_member_profile(self, member_id):
         """Get member profile"""
-        from data_utils import get_member_by_id
+        from utils.lakehouse import get_member_by_id
         return get_member_by_id(member_id)
     
     def call_tool(self, tool_id, member_id, withdrawal_amount, country):
