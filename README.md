@@ -837,6 +837,341 @@ python run_evaluation.py --mode online \
 
 ---
 
+## Governance Dashboard Guide
+
+The Governance page provides comprehensive monitoring and observability through 5 specialized tabs. Each tab focuses on different aspects of system performance, cost, and quality.
+
+### Tab 1: 🔒 Governance Dashboard
+
+**Purpose**: High-level overview of system health and recent activity at a glance.
+
+**What You See:**
+
+#### Key Metrics Cards (Last 24 Hours)
+- **Total Queries**: Total number of queries processed in the last 24 hours
+  - **How to read**: Higher numbers indicate active usage
+  - **What to watch**: Sudden drops may indicate system issues
+
+- **Pass Rate**: Percentage of queries that passed validation
+  - **How to read**: Should be consistently above 80% for healthy operation
+  - **What to watch**: Drops below 70% indicate quality issues requiring investigation
+
+- **Avg Cost**: Average cost per query in USD
+  - **How to read**: Typically $0.003-$0.010 per query
+  - **What to watch**: Spikes may indicate expensive queries or classification failures
+
+- **Health Score**: Overall system health (0-100)
+  - **How to read**: Above 80 = Healthy, 60-80 = Needs attention, Below 60 = Critical
+  - **Calculation**: Based on pass rate, error rate, latency, and cost efficiency
+
+#### System Status Banner
+- **Status indicators**: Shows overall system state (Operational, Degraded, Critical)
+- **Tool usage**: Displays most frequently used tools (tax, benefit, projection)
+- **Country distribution**: Shows query volume by country
+
+#### Audit Trail
+- **Complete query history**: Full list of all queries with timestamps
+- **Columns**: User ID, Country, Query, Response Preview, Cost, Validation Status, Runtime
+- **Sorting**: Click column headers to sort
+- **Filtering**: Use search boxes to filter by user, country, or query text
+- **Purpose**: Compliance auditing and debugging specific queries
+
+#### Recent Activity Feed
+- **Last 10 queries**: Quick view of most recent activity
+- **Color coding**: Green (passed), Red (failed), Yellow (pending)
+- **Purpose**: Quick health check without scrolling through full audit trail
+
+#### Quick Trend Charts
+- **Query Volume Over Time**: Line chart showing query frequency
+- **Cost Trend**: Area chart showing spending patterns
+- **Purpose**: Identify usage patterns and cost spikes
+
+**Use Cases:**
+- Morning health check: Review key metrics and system status
+- Compliance audit: Use audit trail to review specific queries
+- Pattern analysis: Use trend charts to identify usage patterns
+
+---
+
+### Tab 2: 🔬 MLflow Traces
+
+**Purpose**: Deep dive into MLflow experiment tracking, prompt versions, and individual query execution details.
+
+**What You See:**
+
+#### MLflow Experiments Tab
+- **Recent runs**: List of all MLflow runs with timestamps
+- **Run details**: Click any run to see:
+  - Parameters: Country, user ID, validation mode, tools used
+  - Metrics: Runtime, cost, token counts, validation confidence
+  - Artifacts: Full validation results, cost breakdowns, error logs
+- **Purpose**: Debug individual queries and compare runs
+
+#### Prompt Registry Tab
+- **Registered prompts**: All prompt versions tracked in MLflow
+- **Version history**: See how prompts evolved over time
+- **Prompt content**: View full prompt text for each version
+- **Registration button**: Manually trigger prompt registration
+- **Purpose**: Prompt versioning, A/B testing, and rollback capabilities
+
+**How to Interpret:**
+- **High confidence scores**: Good quality responses
+- **Low confidence scores**: May need prompt refinement
+- **Cost spikes**: Check artifacts for expensive queries
+- **Failed validations**: Review reasoning in artifacts
+
+**Use Cases:**
+- Prompt iteration: Compare different prompt versions
+- Quality investigation: Deep dive into failed validations
+- Cost optimization: Identify expensive queries and optimize
+
+---
+
+### Tab 3: ⚙️ Config
+
+**Purpose**: System configuration and offline evaluation management.
+
+**What You See:**
+
+#### SQL Warehouse Configuration
+- **Warehouse selection**: Dropdown to select active SQL warehouse
+- **Purpose**: Configure which warehouse is used for SQL function execution
+
+#### LLM Configuration
+- **Main Advisory LLM** (Claude Opus 4.1):
+  - **Temperature**: Controls creativity (0.0-1.0)
+    - Lower (0.0-0.3): More factual, consistent
+    - Higher (0.7-1.0): More creative, varied
+  - **Max Tokens**: Maximum response length (100-4000)
+    - Lower: Shorter, more focused responses
+    - Higher: More detailed responses
+
+- **Judge Validation LLM** (Claude Sonnet 4):
+  - **Temperature**: Lower recommended (0.0-0.2) for consistent validation
+  - **Max Tokens**: Typically 100-1000 for validation responses
+
+**How to Interpret:**
+- **Temperature too high**: Inconsistent responses, hallucinations
+- **Temperature too low**: Rigid, repetitive responses
+- **Max tokens too low**: Truncated responses
+- **Max tokens too high**: Unnecessary cost
+
+#### Offline Evaluation
+- **CSV upload**: Upload evaluation datasets
+- **Preview**: See data before running
+- **Run evaluation**: Execute batch queries
+- **Results**: View summary and sample results
+- **Purpose**: Batch testing and validation
+
+**Use Cases:**
+- Parameter tuning: Adjust LLM settings based on performance
+- Batch testing: Evaluate multiple queries systematically
+- Cost optimization: Test different configurations
+
+---
+
+### Tab 4: 💰 Cost Analysis
+
+**Purpose**: Comprehensive cost analysis, trends, and projections.
+
+**What You See:**
+
+#### Key Cost Metrics
+- **Total Cost**: Sum of all query costs
+- **Median Cost**: Median cost per query (less sensitive to outliers)
+- **Max Cost**: Highest single query cost
+- **Cost Std Dev**: Variability in query costs
+- **Last Run Cost**: Cost of most recent query with % change vs average
+
+**How to Interpret:**
+- **Median vs Average**: Large difference indicates cost outliers
+- **High Std Dev**: Inconsistent query costs, may need optimization
+- **Max Cost**: Identify expensive queries for optimization
+
+#### Cost Distribution Charts
+- **Cost Distribution Histogram**: Shows how costs are distributed
+  - **Peak at low costs**: Most queries are efficient
+  - **Long tail**: Some expensive queries exist
+- **Cost Over Time**: Trend line showing cost patterns
+  - **Upward trend**: May indicate classification issues
+  - **Spikes**: Investigate specific time periods
+
+#### Cost by Country
+- **Bar chart**: Average cost per country
+- **Purpose**: Identify country-specific cost patterns
+- **Use Cases**: Optimize country-specific configurations
+
+#### Cost Projections
+- **Monthly projection**: Based on current rate
+- **Annual projection**: Long-term cost estimate
+- **Purpose**: Budget planning and forecasting
+
+**Use Cases:**
+- Budget planning: Use projections for cost estimates
+- Cost optimization: Identify expensive queries and optimize
+- Country analysis: Compare costs across countries
+
+---
+
+### Tab 5: 📊 Observability
+
+**Purpose**: Real-time monitoring of performance, quality, classification, and system health.
+
+**What You See:**
+
+#### Real-Time Performance Metrics (Left Column)
+
+**Key Metrics (Last 24h):**
+- **Total Queries**: Count of queries processed
+- **Unique Users**: Number of distinct users
+- **Total Cost**: Aggregate spending
+- **Average Latency**: Mean response time
+- **Pass Rate**: Validation success rate
+
+**Charts:**
+- **Query Volume Over Time**: Hourly query frequency (line chart)
+  - **Peaks**: Identify usage patterns
+  - **Drops**: May indicate system issues
+- **Cost Trend**: Cost spending over time (area chart)
+  - **Spikes**: Investigate expensive periods
+- **Latency Trend**: Response time over time (line chart)
+  - **Spikes**: Performance degradation
+
+**Performance by Country:**
+- **Table**: Metrics broken down by country
+- **Purpose**: Country-specific performance analysis
+
+**Query Distribution:**
+- **Pie chart**: Percentage of queries by country
+- **Purpose**: Understand usage patterns
+
+#### Classification Analytics (Right Column)
+
+**Stage Distribution:**
+- **Stage 1 (Regex)**: Percentage handled by regex patterns
+  - **Target**: 75-85% of queries
+  - **Low percentage**: May need regex pattern updates
+- **Stage 2 (Embedding)**: Percentage handled by embeddings
+  - **Target**: 10-20% of queries
+- **Stage 3 (LLM)**: Percentage requiring LLM fallback
+  - **Target**: <10% of queries
+  - **High percentage**: May indicate classification issues
+
+**Cost Savings Analysis:**
+- **Actual Cost**: Current classification cost
+- **Pure LLM Cost**: What it would cost with LLM-only classification
+- **Savings**: Percentage saved (typically 80-90%)
+- **Purpose**: Validate cost optimization effectiveness
+
+**Classification Funnel:**
+- **Visual flow**: Shows cascade progression
+- **Purpose**: Understand how queries flow through stages
+
+**Latency by Stage:**
+- **Bar chart**: Average latency per stage
+- **Purpose**: Performance comparison
+
+#### Quality Monitoring (Left Column)
+
+**Validation Pass Rate:**
+- **Overall Pass Rate**: Percentage of queries passing validation
+- **Pass Rate Trend**: Pass rate over time (line chart)
+  - **Downward trend**: Quality degradation
+  - **Drops**: Investigate specific time periods
+
+**Confidence Analysis:**
+- **Average Confidence**: Mean validation confidence score
+- **Confidence Distribution**: Histogram of confidence scores
+  - **Peak near 1.0**: High quality responses
+  - **Peak near 0.5-0.7**: May need prompt refinement
+- **Confidence by Verdict**: Average confidence for passed vs failed
+  - **Purpose**: Understand validation patterns
+
+**Common Violations:**
+- **Violation types**: Most frequent validation failures
+- **Frequency**: How often each violation occurs
+- **Purpose**: Identify recurring issues
+
+**Quality by Country:**
+- **Table**: Pass rate and confidence by country
+- **Purpose**: Country-specific quality analysis
+
+#### System Health (Right Column)
+
+**Health Score:**
+- **Overall Score**: 0-100 health rating
+- **Components**: Based on pass rate, error rate, latency, cost
+- **Status**: Healthy (80+), Degraded (60-80), Critical (<60)
+
+**Anomaly Detection:**
+- **Cost Anomalies**: Unusual cost spikes
+- **Latency Anomalies**: Unusual response times
+- **Quality Anomalies**: Unusual validation failures
+- **Purpose**: Early warning system
+
+**Error Rate:**
+- **Current Error Rate**: Percentage of failed queries
+- **Error Trend**: Error rate over time
+- **Purpose**: Monitor system stability
+
+**System Alerts:**
+- **Active Alerts**: Current issues requiring attention
+- **Alert History**: Past alerts and resolutions
+
+**Use Cases:**
+- Performance monitoring: Track latency and throughput
+- Quality assurance: Monitor validation pass rates
+- Cost optimization: Validate classification savings
+- Anomaly detection: Identify unusual patterns early
+
+---
+
+### Interpreting Charts and Metrics
+
+#### General Guidelines
+
+**Green Indicators (Good):**
+- High pass rates (>80%)
+- Low latency (<3 seconds)
+- Low cost (<$0.005 per query)
+- High health scores (>80)
+
+**Yellow Indicators (Warning):**
+- Pass rates 70-80%
+- Latency 3-5 seconds
+- Cost $0.005-$0.010 per query
+- Health scores 60-80
+
+**Red Indicators (Critical):**
+- Pass rates <70%
+- Latency >5 seconds
+- Cost >$0.010 per query
+- Health scores <60
+
+#### Chart Reading Tips
+
+**Line Charts:**
+- **Upward trends**: Increasing over time
+- **Downward trends**: Decreasing over time
+- **Spikes**: Sudden increases (investigate)
+- **Drops**: Sudden decreases (investigate)
+
+**Bar Charts:**
+- **Taller bars**: Higher values
+- **Compare heights**: Relative differences
+- **Clusters**: Group similar values
+
+**Histograms:**
+- **Peaks**: Most common values
+- **Distribution shape**: Normal, skewed, bimodal
+- **Outliers**: Values far from the peak
+
+**Pie Charts:**
+- **Larger slices**: Higher percentages
+- **Compare slices**: Relative proportions
+
+---
+
 ## Documentation
 
 ### Core Guides
