@@ -7,7 +7,7 @@
 # ✅ FIXED: log_query_event() call with correct parameters
 
 from agent import SuperAdvisorAgent
-from utils.audit import log_query_event
+from utils.audit import log_query_event, _escape_sql
 from utils.progress import initialize_progress_tracker, reset_progress_tracker, mark_phase_running, mark_phase_complete, mark_phase_error
 from observability import create_observability
 import traceback, uuid, time
@@ -81,23 +81,19 @@ class AuditLogger:
             event_id = str(uuid.uuid4())
             timestamp = datetime.utcnow().isoformat()
             
-            def escape_sql(s):
-                if s is None:
-                    return ""
-                return s.replace("'", "''")
-            
-            query_text_escaped = escape_sql(query_string)
+            # ✅ Use escape_sql from utils.audit instead of nested function
+            query_text_escaped = _escape_sql(query_string)
             answer_truncated = answer[:15000] if answer else ""
-            agent_response_escaped = escape_sql(answer_truncated)
+            agent_response_escaped = _escape_sql(answer_truncated)
             result_preview = answer_truncated[:500] if answer_truncated else ""
-            result_preview_escaped = escape_sql(result_preview)
-            judge_response_escaped = escape_sql(str(judge_verdict.get('reasoning', '')))
+            result_preview_escaped = _escape_sql(result_preview)
+            judge_response_escaped = _escape_sql(str(judge_verdict.get('reasoning', '')))
             judge_verdict_text = judge_verdict.get('verdict', 'UNKNOWN')
             judge_confidence = judge_verdict.get('confidence', 0.0)  # ✅ Extract confidence
             tool_used = tools_called[0] if tools_called else "none"
             citations_json = json.dumps(citations) if citations else "[]"
-            citations_escaped = escape_sql(citations_json)
-            error_text = escape_sql(error_info) if error_info else ""
+            citations_escaped = _escape_sql(citations_json)
+            error_text = _escape_sql(error_info) if error_info else ""
             validation_mode = judge_verdict.get('validation_mode', 'llm_judge')
             validation_attempts = judge_verdict.get('attempts', 1)
             
@@ -117,7 +113,7 @@ class AuditLogger:
                 'reasoning': judge_verdict.get('reasoning', ''),
                 'confidence': judge_confidence
             }
-            judge_response_escaped = escape_sql(json_lib.dumps(judge_response_data))
+            judge_response_escaped = _escape_sql(json_lib.dumps(judge_response_data))
             
             insert_query = f"""
             INSERT INTO {GOVERNANCE_TABLE}

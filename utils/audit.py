@@ -123,11 +123,25 @@ def log_query_event(
 # HELPER FUNCTIONS
 # ============================================================================
 
-def _escape_sql(value: Any) -> str:
-    """Simple SQL-safe escaping."""
+def escape_sql(value: Any) -> str:
+    """
+    SQL-safe string escaping for use in SQL queries.
+    
+    Escapes single quotes by doubling them (SQL standard).
+    
+    Args:
+        value: Value to escape (can be str, int, float, None, etc.)
+        
+    Returns:
+        Escaped string (empty string if None)
+    """
     if value is None:
         return ""
     return str(value).replace("'", "''")
+
+
+# Keep _escape_sql for backward compatibility
+_escape_sql = escape_sql
 
 
 def build_citation_json(citations: Optional[List]) -> str:
