@@ -239,6 +239,35 @@ ALWAYS use the balance amounts shown in the tool calculation notes.""",
 }
 
 
+def get_authority(country_code: str, tool_type: str) -> str:
+    """
+    Get regulatory authority for a country and tool type.
+    
+    Args:
+        country_code: Country code (AU, US, UK, IN)
+        tool_type: Type of tool (tax, benefit, projection, eps_benefit)
+        
+    Returns:
+        Authority name string
+    """
+    config = get_country_config(country_code)
+    
+    # Map tool types to authority indices
+    tool_to_authority_map = {
+        "tax": 0,
+        "benefit": 1,
+        "projection": 2,
+        "eps_benefit": 1  # For India, EPS benefit uses same authority as benefit
+    }
+    
+    authority_index = tool_to_authority_map.get(tool_type, 0)
+    
+    if authority_index < len(config.authorities):
+        return config.authorities[authority_index]
+    
+    return "Unknown Authority"
+
+
 # ============================================================================
 # HELPER FUNCTIONS
 # ============================================================================

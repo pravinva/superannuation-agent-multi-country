@@ -19,36 +19,11 @@ from config import (
     MAIN_LLM_ENDPOINT, MAIN_LLM_TEMPERATURE, MAIN_LLM_MAX_TOKENS,
     JUDGE_LLM_ENDPOINT, MAX_VALIDATION_ATTEMPTS, SQL_WAREHOUSE_ID, calculate_llm_cost
 )
-from prompts_registry import get_prompts_registry
-from react_loop import ReactAgenticLoop, AgentState
-from country_config import get_country_config, get_balance_terminology, get_currency_info
+from utils.formatting import get_currency, get_currency_symbol, safe_float
+from country_config import get_authority
 
 class SuperAdvisorAgent:
     """Multi-country superannuation/retirement advisor agent with validation."""
-    
-    AUTHORITY_MAP = {
-        "AU": {
-            "tax": "Australian Taxation Office (ATO)",
-            "benefit": "Department of Social Services (DSS)",
-            "projection": "ASIC - Australian Securities and Investments Commission"
-        },
-        "US": {
-            "tax": "Internal Revenue Service (IRS)",
-            "benefit": "Social Security Administration (SSA)",
-            "projection": "U.S. Department of Labor (DOL)"
-        },
-        "UK": {
-            "tax": "Her Majesty's Revenue and Customs (HMRC)",
-            "benefit": "UK Pensions Regulator (TPR)",
-            "projection": "Financial Conduct Authority (FCA)"
-        },
-        "IN": {
-            "tax": "Income Tax Department",
-            "benefit": "Pension Fund Regulatory and Development Authority (PFRDA)",
-            "projection": "Employees' Provident Fund Organisation (EPFO)",
-            "eps_benefit": "Employees' Provident Fund Organisation (EPFO)"
-        }
-    }
     
     def __init__(self, tools=None, validator=None, main_llm_endpoint=None, validation_mode="llm_judge", 
                  enable_mlflow_prompts=True):
@@ -90,20 +65,7 @@ class SuperAdvisorAgent:
  
     def get_authority(self, country, tool_type):
         """Get authority for a country and tool type."""
-        return self.AUTHORITY_MAP.get(country, {}).get(tool_type, "Unknown Authority")
-    
-    def safe_float(self, value, default=0.0):
-        """Safely convert value to float."""
-        if value is None:
-            return default
-        try:
-            if isinstance(value, str):
-                value = value.replace(",", "").strip()
-            if not value or str(value).lower() == "none":
-                return default
-            return float(value)
-        except (ValueError, TypeError):
-            return default
+        return get_authority(country, tool_type)
     
     def anonymize_member_name(self, name):
         """Anonymize member name for privacy."""
@@ -148,7 +110,7 @@ class SuperAdvisorAgent:
         country = member_profile.get("country", "AU")
         age = member_profile.get("age", "Unknown")
         balance_raw = member_profile.get("super_balance", 0)
-        balance = self.safe_float(balance_raw)
+        balance = safe_float(balance_raw)
         employment = member_profile.get("employment_status", "Unknown")
         
         context = f"""Member Profile:
@@ -156,7 +118,7 @@ class SuperAdvisorAgent:
 - Age: {age}
 - Country: {country}
 - Employment: {employment}
-- Retirement Corpus: {balance:,.2f} {self.get_currency(country)}
+- Retirement Corpus: {balance:,.2f} {get_currency(country)}
 """
         
         if country == "AU":
@@ -170,16 +132,6 @@ class SuperAdvisorAgent:
         }
         
         return context_data
-    
-    def get_currency(self, country):
-        """Get currency code for country."""
-        currency_info = get_currency_info(country)
-        return currency_info["code"]  # "AUD", "USD", "GBP", "INR"
-    
-    def get_currency_symbol(self, country):
-        """Get currency symbol for country."""
-        currency_info = get_currency_info(country)
-        return currency_info["symbol"]  # "$", "£", "₹"
     
     def format_tool_results(self, tool_results, country="AU"):
         """Format tool results for context - WITH INDIA BALANCE SPLIT DISPLAY."""
