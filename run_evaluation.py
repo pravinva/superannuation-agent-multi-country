@@ -1,31 +1,78 @@
 # run_evaluation.py
 import pandas as pd
 import argparse
-from agent import run_agent_interaction
+import uuid
+from agent_processor import agent_query
 from config import MLFLOW_PROD_EXPERIMENT_PATH, MLFLOW_OFFLINE_EVAL_PATH
 
 def offline_eval(csv_path):
     """Run evaluation on CSV dataset"""
     df = pd.read_csv(csv_path)
     results = []
+    
     for idx, row in df.iterrows():
-        output = run_agent_interaction(
-            user_id=row["user_id"],
-            country=row["country"],
-            query_str=row["query_str"],
-            extra_context=row.to_dict(),
-            mlflow_experiment_path=MLFLOW_OFFLINE_EVAL_PATH
+        # Generate unique session ID for each evaluation
+        session_id = str(uuid.uuid4())
+        
+        # Map country display name to country code if needed
+        country = row.get("country", "AU")
+        country_code_map = {
+            "Australia": "AU",
+            "USA": "US",
+            "United Kingdom": "UK",
+            "India": "IN",
+            "AU": "AU",
+            "US": "US",
+            "UK": "UK",
+            "IN": "IN"
+        }
+        country_code = country_code_map.get(country, country)
+        
+        # Run agent query
+        output = agent_query(
+            user_id=row.get("user_id", "eval_user"),
+            session_id=session_id,
+            country=country_code,
+            query_string=row.get("query_str", row.get("query_string", "")),
+            validation_mode="llm_judge",
+            enable_observability=True
         )
-        results.append(output)
+        
+        results.append({
+            "row_index": idx,
+            "user_id": row.get("user_id"),
+            "country": country_code,
+            "query": row.get("query_str", row.get("query_string", "")),
+            "session_id": session_id,
+            "result": output
+        })
+    
     return results
 
 def online_eval(query_str, user_id, country):
     """Run single online evaluation"""
-    return run_agent_interaction(
+    session_id = str(uuid.uuid4())
+    
+    # Map country display name to country code if needed
+    country_code_map = {
+        "Australia": "AU",
+        "USA": "US",
+        "United Kingdom": "UK",
+        "India": "IN",
+        "AU": "AU",
+        "US": "US",
+        "UK": "UK",
+        "IN": "IN"
+    }
+    country_code = country_code_map.get(country, country)
+    
+    return agent_query(
         user_id=user_id,
-        country=country,
-        query_str=query_str,
-        mlflow_experiment_path=MLFLOW_PROD_EXPERIMENT_PATH
+        session_id=session_id,
+        country=country_code,
+        query_string=query_str,
+        validation_mode="llm_judge",
+        enable_observability=True
     )
 
 if __name__ == "__main__":
