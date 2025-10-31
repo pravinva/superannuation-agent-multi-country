@@ -2,10 +2,7 @@
 
 ## Overview
 
-This guide covers deployment options for the Multi-Country Pension Advisor system, including:
-- Databricks Asset Bundles (DABS) for SQL/infrastructure
-- GitHub Actions workflows for Streamlit app deployment
-- Multiple deployment strategies for different environments
+This guide covers deployment options for the Multi-Country Pension Advisor system on Databricks. All deployment methods use Databricks-native tools and services.
 
 ## Architecture Components
 
@@ -15,23 +12,19 @@ The system consists of:
 3. **MLflow**: Experiment tracking and prompt registry
 4. **Monitoring**: Lakehouse Monitoring setup
 
-## Deployment Strategy
+## Deployment Options
 
 ### Option 1: DABS + Databricks Apps (Recommended)
 
-Use DABS for infrastructure and Databricks Apps for Streamlit deployment.
+Use Databricks Asset Bundles (DABS) for infrastructure and Databricks Apps for Streamlit deployment.
 
-### Option 2: DABS + Workspace Files
+**Best for**: Production Databricks environments requiring native integration
 
-Use DABS for infrastructure and upload files to Databricks workspace.
+### Option 2: DABS + Workspace Files + Jobs
 
-### Option 3: DABS + Databricks Job
+Use DABS for infrastructure and deploy Streamlit app to workspace files, then run as a Databricks Job.
 
-Use DABS for infrastructure and run Streamlit as a scheduled job.
-
-### Option 4: Full Manual Deployment
-
-Manual deployment for development/testing environments.
+**Best for**: CI/CD pipelines and automated deployments
 
 ---
 
@@ -114,9 +107,9 @@ databricks bundle deploy --target production
 
 ---
 
-## Part 2: GitHub Actions - Streamlit Deployment
+## Part 2: Streamlit App Deployment
 
-### Option A: Deploy to Databricks Apps
+### Option 1: Deploy to Databricks Apps
 
 Deploy Streamlit app as a Databricks App using `app.yaml`.
 
@@ -190,7 +183,7 @@ jobs:
 
 ---
 
-### Option B: Deploy to Workspace Files + Run as Job
+### Option 2: Deploy to Workspace Files + Run as Job
 
 Deploy files to workspace and create a Databricks Job to run Streamlit.
 
@@ -304,107 +297,6 @@ jobs:
 
 ---
 
-### Option C: Deploy to External Streamlit Cloud
-
-Deploy to Streamlit Community Cloud or custom server.
-
-#### .github/workflows/deploy-streamlit-cloud.yml
-
-```yaml
-name: Deploy to Streamlit Cloud
-
-on:
-  push:
-    branches: [ main ]
-  workflow_dispatch:
-
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Validate requirements.txt
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt --dry-run
-      
-      - name: Deploy to Streamlit Cloud
-        env:
-          STREAMLIT_CLOUD_TOKEN: ${{ secrets.STREAMLIT_CLOUD_TOKEN }}
-        run: |
-          # Streamlit Cloud automatically deploys from GitHub
-          # This step validates the deployment
-          echo "Streamlit Cloud will auto-deploy from this repository"
-          echo "Ensure repository is connected in Streamlit Cloud dashboard"
-```
-
-**Setup**: Connect GitHub repository in Streamlit Cloud dashboard.
-
----
-
-### Option D: Deploy to Remote Server via SSH
-
-Deploy to a remote server running Streamlit.
-
-#### .github/workflows/deploy-ssh.yml
-
-```yaml
-name: Deploy to Remote Server
-
-on:
-  push:
-    branches: [ main ]
-  workflow_dispatch:
-
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Setup SSH
-        uses: webfactory/ssh-agent@v0.7.0
-        with:
-          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
-      
-      - name: Add server to known hosts
-        run: |
-          ssh-keyscan -H ${{ secrets.SERVER_HOST }} >> ~/.ssh/known_hosts
-      
-      - name: Deploy to server
-        env:
-          SERVER_HOST: ${{ secrets.SERVER_HOST }}
-          SERVER_USER: ${{ secrets.SERVER_USER }}
-          SERVER_PATH: ${{ secrets.SERVER_PATH }}
-        run: |
-          # Copy files to server
-          rsync -avz --exclude '.git' --exclude '__pycache__' \
-            --exclude '*.md' --exclude 'docs' \
-            ./ $SERVER_USER@$SERVER_HOST:$SERVER_PATH/
-          
-          # SSH into server and restart Streamlit
-          ssh $SERVER_USER@$SERVER_HOST << 'EOF'
-            cd $SERVER_PATH
-            pip install -r requirements.txt
-            pkill -f streamlit || true
-            nohup streamlit run app.py --server.port 8501 > streamlit.log 2>&1 &
-            echo "Streamlit app restarted"
-          EOF
-```
-
-**Server Requirements**:
-- Python 3.9+ installed
-- Streamlit installed
-- SSH access configured
-- Firewall allows port 8501
-
----
-
 ## Part 3: Combined Workflow (DABS + Streamlit)
 
 Complete workflow that deploys both infrastructure and application.
@@ -504,19 +396,10 @@ jobs:
 
 Configure the following secrets in your GitHub repository:
 
-1. **For Databricks**:
-   - `DATABRICKS_HOST`: Your Databricks workspace URL (e.g., `https://your-workspace.cloud.databricks.com`)
-   - `DATABRICKS_TOKEN`: Personal access token or service principal token
-   - `DATABRICKS_WORKSPACE_PATH`: Workspace path for app (e.g., `/Workspace/Users/user@example.com/app`)
-
-2. **For SSH Deployment** (if using Option D):
-   - `SSH_PRIVATE_KEY`: SSH private key for server access
-   - `SERVER_HOST`: Server hostname or IP
-   - `SERVER_USER`: SSH username
-   - `SERVER_PATH`: Deployment path on server
-
-3. **For Streamlit Cloud** (if using Option C):
-   - `STREAMLIT_CLOUD_TOKEN`: Streamlit Cloud API token (optional)
+**For Databricks**:
+- `DATABRICKS_HOST`: Your Databricks workspace URL (e.g., `https://your-workspace.cloud.databricks.com`)
+- `DATABRICKS_TOKEN`: Personal access token or service principal token
+- `DATABRICKS_WORKSPACE_PATH`: Workspace path for app (e.g., `/Workspace/Users/user@example.com/app`)
 
 ### Environment Variables
 
@@ -624,20 +507,16 @@ databricks jobs runs list --job-id <job-id>
 
 | Method | Pros | Cons | Best For |
 |--------|------|------|----------|
-| DABS + Databricks Apps | Native Databricks integration | Limited CLI support | Production Databricks environments |
-| DABS + Workspace Files | Full control, automated | Manual app configuration | CI/CD pipelines |
-| DABS + Job | Scheduled execution | Not interactive | Batch processing |
-| Streamlit Cloud | Easy setup, free tier | External dependency | Development/testing |
-| SSH Deployment | Full control | Server management | Self-hosted environments |
+| DABS + Databricks Apps | Native Databricks integration, managed platform | Limited CLI support, manual UI configuration | Production Databricks environments |
+| DABS + Workspace Files + Job | Full control, automated deployment, CI/CD friendly | Requires job management, scheduled execution | CI/CD pipelines, automated deployments |
 
 ---
 
 ## Recommendations
 
-1. **Production**: Use DABS for infrastructure + Databricks Apps or Workspace Files for Streamlit
-2. **Development**: Use manual deployment or Streamlit Cloud for quick iteration
-3. **CI/CD**: Use GitHub Actions workflows for automated deployment
-4. **Monitoring**: Setup Lakehouse Monitoring post-deployment
+1. **Production**: Use DABS for infrastructure + Databricks Apps for Streamlit
+2. **CI/CD**: Use GitHub Actions workflows for automated deployment (Option 2)
+3. **Monitoring**: Setup Lakehouse Monitoring post-deployment
 
 ---
 
@@ -645,6 +524,5 @@ databricks jobs runs list --job-id <job-id>
 
 - [Databricks Asset Bundles Documentation](https://docs.databricks.com/dev-tools/bundles/index.html)
 - [Databricks CLI Documentation](https://docs.databricks.com/dev-tools/cli/index.html)
-- [Streamlit Deployment Guide](https://docs.streamlit.io/streamlit-community-cloud/deploy-your-app)
+- [Databricks Apps Documentation](https://docs.databricks.com/apps/)
 - [GitHub Actions Documentation](https://docs.github.com/en/actions)
-
