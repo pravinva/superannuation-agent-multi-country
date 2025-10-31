@@ -1,13 +1,13 @@
 # Building Production-Ready Agentic AI Applications on Databricks: A Deep Dive into the Multi-Country Pension Advisor
 
-**Author:** Pravin Varma | **Databricks Solutions Architect**  
+**Author:** Pravin Varma | **Databricks Delivery Solutions Architect**  
 **Published:** 2025
 
 > *This project demonstrates how to build enterprise-grade agentic AI applications on Databricks using production best practices. We'll explore the ReAct agent framework, MLflow integration, observability patterns, and how to build scalable, maintainable agentic systems.*
 
 ---
 
-## 🎯 Executive Summary
+## Executive Summary
 
 In this reference implementation, we've built a **production-ready agentic AI pension advisory system** that showcases the **best practices for developing agentic AI applications on Databricks**. The system processes retirement planning queries across multiple countries (Australia, USA, UK, India) with enterprise-grade observability, cost optimization, and regulatory compliance.
 
@@ -23,7 +23,7 @@ In this reference implementation, we've built a **production-ready agentic AI pe
 
 ---
 
-## 🏗️ Architecture Overview
+## Architecture Overview
 
 ### The ReAct Agent Pattern
 
@@ -72,7 +72,7 @@ Our implementation (`react_loop.py`) separates the agentic loop from orchestrati
 
 ---
 
-## 🔑 Production Best Practices Demonstrated
+## Production Best Practices Demonstrated
 
 ### 1. MLflow Integration for Agentic AI
 
@@ -252,7 +252,7 @@ CountryConfig(
 
 ---
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Prerequisites
 
@@ -298,7 +298,7 @@ CountryConfig(
 
 ---
 
-## 📊 Technology Stack
+## Technology Stack
 
 ### Agent Framework
 - **ReAct Pattern**: Custom implementation in `react_loop.py`
@@ -328,7 +328,7 @@ CountryConfig(
 
 ---
 
-## 🎯 Key Capabilities
+## Key Capabilities
 
 ### Intelligent Off-Topic Detection
 
@@ -358,7 +358,7 @@ Every response includes:
 
 ---
 
-## 📈 Cost Analysis
+## Cost Analysis
 
 ### Typical Query Cost Breakdown
 
@@ -386,7 +386,7 @@ Total Cost: $0.003245
 
 ---
 
-## 🏛️ Governance & Compliance
+## Governance & Compliance
 
 ### Audit Trail
 
@@ -413,7 +413,7 @@ Every query is logged to Unity Catalog with:
 
 ---
 
-## 🔧 Development Guide
+## Development Guide
 
 ### Project Structure
 
@@ -460,7 +460,7 @@ multi-country-pension-advisor/
 
 ---
 
-## 📚 Documentation
+## Documentation
 
 ### Core Guides
 - **`README.md`** (this file) - Overview and production practices
@@ -476,7 +476,7 @@ multi-country-pension-advisor/
 
 ---
 
-## 🎓 Key Learnings
+## Key Learnings
 
 ### What Makes This Production-Ready?
 
@@ -497,7 +497,7 @@ multi-country-pension-advisor/
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
 Issues and pull requests welcome! This is a reference implementation demonstrating production best practices for agentic AI on Databricks.
 
@@ -505,13 +505,13 @@ Issues and pull requests welcome! This is a reference implementation demonstrati
 
 ---
 
-## 📄 License
+## License
 
 MIT License - See LICENSE file for details
 
 ---
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 Built with:
 - **Databricks Platform** - Unified analytics and AI platform
