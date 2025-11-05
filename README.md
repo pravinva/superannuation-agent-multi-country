@@ -2,7 +2,7 @@
 
 **Maintainer:** [Pravin Varma](https://github.com/pravinva)
 
-Enterprise-grade agentic AI reference implementation for pension advisory using Agent Bricks, MLflow, and Unity Catalog.
+Enterprise-grade agentic AI reference implementation for pension advisory using Agent Framework, MLflow, and Unity Catalog.
 
 ## Overview
 
@@ -14,7 +14,7 @@ Demonstrates production-ready agentic AI patterns for Financial Services:
 
 ### Key Features
 
-- **8-phase agentic pipeline** with Agent Bricks orchestration
+- **8-phase agentic pipeline** with Agent Framework orchestration
 - **Privacy protection** via PII anonymization and restoration
 - **Off-topic detection** using ai_classify SQL function
 - **LLM-as-a-Judge validation** for response accuracy
