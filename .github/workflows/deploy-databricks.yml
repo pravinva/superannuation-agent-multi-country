@@ -1,0 +1,50 @@
+name: Deploy to Databricks Workspace
+
+on:
+  push:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          pip install databricks-cli databricks-sdk
+      
+      - name: Authenticate Databricks
+        env:
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+        run: |
+          databricks auth login --host $DATABRICKS_HOST --token $DATABRICKS_TOKEN
+      
+      - name: Upload files to workspace
+        env:
+          DATABRICKS_WORKSPACE_PATH: ${{ secrets.DATABRICKS_WORKSPACE_PATH }}
+        run: |
+          # Upload application files (exclude documentation and cache)
+          databricks workspace import_dir . "$DATABRICKS_WORKSPACE_PATH/app" \
+            --exclude-hidden-files \
+            --exclude '*.md' \
+            --exclude '__pycache__' \
+            --exclude '.git' \
+            --exclude 'docs' \
+            --exclude '*.backup' \
+            --exclude '.github'
+      
+      - name: Deployment notification
+        run: |
+          echo "Files uploaded to ${{ secrets.DATABRICKS_WORKSPACE_PATH }}/app"
+          echo "Configure Databricks Apps in UI using app.yaml if needed"
+

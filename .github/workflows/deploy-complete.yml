@@ -1,0 +1,101 @@
+name: Complete Deployment Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      deploy_infrastructure:
+        description: 'Deploy SQL Infrastructure'
+        required: false
+        default: 'true'
+      deploy_application:
+        description: 'Deploy Streamlit App'
+        required: false
+        default: 'true'
+
+jobs:
+  deploy-infrastructure:
+    name: Deploy SQL Infrastructure
+    runs-on: ubuntu-latest
+    if: github.event.inputs.deploy_infrastructure != 'false'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install Databricks CLI
+        run: |
+          pip install databricks-cli
+      
+      - name: Authenticate Databricks
+        env:
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+        run: |
+          databricks auth login --host $DATABRICKS_HOST --token $DATABRICKS_TOKEN
+      
+      - name: Deploy SQL Schema
+        run: |
+          databricks sql execute \
+            --query "$(cat sql_ddls/super_advisory_demo_schema.sql)" \
+            --warehouse-id ${{ secrets.DATABRICKS_WAREHOUSE_ID }}
+      
+      - name: Deploy SQL Functions
+        run: |
+          databricks sql execute \
+            --query "$(cat sql_ddls/super_advisory_demo_functions.sql)" \
+            --warehouse-id ${{ secrets.DATABRICKS_WAREHOUSE_ID }}
+  
+  deploy-application:
+    name: Deploy Streamlit Application
+    needs: deploy-infrastructure
+    runs-on: ubuntu-latest
+    if: github.event.inputs.deploy_application != 'false'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          pip install databricks-cli databricks-sdk
+      
+      - name: Authenticate Databricks
+        env:
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+        run: |
+          databricks auth login --host $DATABRICKS_HOST --token $DATABRICKS_TOKEN
+      
+      - name: Upload application files
+        env:
+          DATABRICKS_WORKSPACE_PATH: ${{ secrets.DATABRICKS_WORKSPACE_PATH }}
+        run: |
+          databricks workspace import_dir . "$DATABRICKS_WORKSPACE_PATH/app" \
+            --exclude-hidden-files \
+            --exclude '*.md' \
+            --exclude '__pycache__' \
+            --exclude '.git' \
+            --exclude 'docs' \
+            --exclude '*.backup' \
+            --exclude '.github' \
+            --exclude 'sql_ddls'
+      
+      - name: Deployment summary
+        run: |
+          echo "## Deployment Complete ✅" >> $GITHUB_STEP_SUMMARY
+          echo "- SQL Infrastructure: Deployed" >> $GITHUB_STEP_SUMMARY
+          echo "- Streamlit Application: Deployed to ${{ secrets.DATABRICKS_WORKSPACE_PATH }}/app" >> $GITHUB_STEP_SUMMARY
+          echo "- Next steps: Configure Databricks Apps in UI using app.yaml" >> $GITHUB_STEP_SUMMARY
+

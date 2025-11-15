@@ -1,0 +1,55 @@
+name: Deploy SQL Infrastructure
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'sql_ddls/**'
+  workflow_dispatch:
+
+jobs:
+  deploy-sql:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install Databricks CLI
+        run: |
+          pip install databricks-cli
+      
+      - name: Authenticate Databricks
+        env:
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+        run: |
+          databricks auth login --host $DATABRICKS_HOST --token $DATABRICKS_TOKEN
+      
+      - name: Deploy SQL Schema
+        env:
+          DATABRICKS_WORKSPACE_PATH: ${{ secrets.DATABRICKS_WORKSPACE_PATH }}
+        run: |
+          # Execute schema creation SQL
+          databricks sql execute \
+            --query "$(cat sql_ddls/super_advisory_demo_schema.sql)" \
+            --warehouse-id ${{ secrets.DATABRICKS_WAREHOUSE_ID }}
+      
+      - name: Deploy SQL Functions
+        env:
+          DATABRICKS_WORKSPACE_PATH: ${{ secrets.DATABRICKS_WORKSPACE_PATH }}
+        run: |
+          # Execute functions SQL
+          databricks sql execute \
+            --query "$(cat sql_ddls/super_advisory_demo_functions.sql)" \
+            --warehouse-id ${{ secrets.DATABRICKS_WAREHOUSE_ID }}
+      
+      - name: Verify deployment
+        run: |
+          echo "SQL infrastructure deployed successfully"
+

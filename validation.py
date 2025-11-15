@@ -14,6 +14,7 @@
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.service.serving import ChatMessage, ChatMessageRole
 from config import JUDGE_LLM_ENDPOINT, JUDGE_LLM_TEMPERATURE, JUDGE_LLM_MAX_TOKENS, calculate_llm_cost
+from prompts_registry import get_prompts_registry
 import json
 import time
 import re
@@ -21,9 +22,10 @@ import re
 class LLMJudgeValidator:
     """LLM-as-a-Judge validator using Claude for fair validation"""
     
-    def __init__(self, judge_endpoint=None):
+    def __init__(self, judge_endpoint=None, prompts_registry=None):
         self.w = WorkspaceClient()
         self.judge_endpoint = judge_endpoint or JUDGE_LLM_ENDPOINT
+        self.prompts_registry = prompts_registry or get_prompts_registry()
         
         # Determine model type from endpoint name for cost calculation
         if "opus" in self.judge_endpoint.lower():
@@ -184,140 +186,24 @@ class LLMJudgeValidator:
             return result
     
     def _build_validation_prompt(self, response_text, user_query, context, member_profile=None, tool_output=None):
-        """Build validation prompt - NOW INCLUDES MEMBER PROFILE AND TOOL OUTPUT"""
+        """Build validation prompt using prompts registry."""
         
-        # Format member profile for clarity
-        member_info = "NO MEMBER PROFILE PROVIDED"
-        if member_profile:
-            member_info = f"""
-MEMBER PROFILE (for reference):
-- Member ID: {member_profile.get('member_id', 'N/A')}
-- Name: {member_profile.get('name', 'N/A')} (anonymized during processing)
-- Age: {member_profile.get('age', 'N/A')}
-- Country: {member_profile.get('country', 'N/A')}
-- Preservation Age: {member_profile.get('preservation_age', 'N/A')}
-- Employment Status: {member_profile.get('employment_status', 'N/A')}
-- Super Balance: {member_profile.get('super_balance', 'N/A')}
-- Other Assets: {member_profile.get('other_assets', 'N/A')}
-- Dependents: {member_profile.get('dependents', 'N/A')}
-"""
+        # Get formatted strings from prompts registry
+        member_info = self.prompts_registry.get_member_profile_format(member_profile)
+        tool_info, tool_status, tool_failures = self.prompts_registry.get_tool_output_format(tool_output)
         
-        # 🆕 NEW: Format tool output and detect failures
-        tool_info = "NO TOOL CALCULATIONS PERFORMED"
-        tool_failures = []
-        if tool_output:
-            tool_lines = ["TOOL CALCULATIONS & RESULTS (what the planning LLM received):"]
-            for tool_name, tool_result in tool_output.items():
-                if "error" in tool_result:
-                    tool_lines.append(f"\n❌ Tool '{tool_name}' failed: {tool_result['error']}")
-                    tool_failures.append(f"- {tool_name}: {tool_result['error']}")
-                else:
-                    tool_lines.append(f"\n✓ Tool: {tool_result.get('tool_name', tool_name)}")
-                    tool_lines.append(f"  UC Function: {tool_result.get('uc_function', 'N/A')}")
-                    tool_lines.append(f"  Authority: {tool_result.get('authority', 'N/A')}")
-                    tool_lines.append(f"  Calculation Result: {tool_result.get('calculation', 'N/A')}")
-                    if tool_result.get('citations'):
-                        tool_lines.append(f"  Citations: {len(tool_result['citations'])} regulatory references")
-            tool_info = "\n".join(tool_lines)
+        # Get validation prompt template from registry
+        prompt_template = self.prompts_registry.get_validation_prompt_template()
         
-        # 🆕 NEW: Add tool status indicator
-        tool_status = "✅ All tools executed successfully"
-        if tool_failures:
-            tool_status = f"❌ TOOL FAILURES DETECTED:\n" + "\n".join(tool_failures)
-        
-        prompt = f"""FAIR VALIDATION TASK: Analyze this retirement advice response thoroughly.
-
-USER'S EXACT QUESTION: "{user_query}"
-
-{member_info}
-
-{tool_info}
-
-{tool_status}
-
-AI GENERATED RESPONSE (FULL {len(response_text)} CHARACTERS - REVIEW ENTIRE RESPONSE BELOW):
-{response_text}
-
-SYSTEM NOTE:
-- Off-topic queries (vacation, food, general life advice) are filtered BEFORE reaching validation using ai_classify
-- If you see a polite decline for non-retirement topics, this is CORRECT behavior and should PASS
-- Only retirement-related queries should have tool calculations and detailed answers
-
-VALIDATION CRITERIA (BE FAIR - REVIEW ENTIRE RESPONSE):
-
-0. **TOOL EXECUTION**: If ANY tools failed (see above), response MUST fail validation with CRITICAL severity
-
-0.5. **SCOPE ADHERENCE**: 
-   - If question is about retirement/pensions/superannuation → response must answer it
-   - If question is OFF-TOPIC (vacation, food, general advice) → politely declining is CORRECT
-   - A polite decline that redirects to retirement topics should PASS validation
-   - Only fail if response answers off-topic questions OR ignores in-scope retirement questions
-
-1. **QUESTION ANSWERING**: Does the response adequately address the user's retirement question (IF in scope)?
-
-2. **SPECIFICITY**: Does it provide specific numbers where appropriate?
-
-3. **DATA USAGE**: Does it reference member data appropriately? (IMPORTANT: Using member's profile data is CORRECT, not an error)
-
-4. **COMPLETENESS**: Does it address main aspects of the question?
-
-5. **ACCURACY**: Are statements consistent with retirement rules?
-
-IMPORTANT CLARIFICATIONS:
-- The member profile ABOVE contains the member's actual data (age, balance, country, etc)
-- The tool calculations ABOVE show the actual results from regulatory calculators
-- Using this data in the response is CORRECT and EXPECTED
-- If response says "you are age 52" and profile shows age=52, that's DATA USAGE, NOT INVENTION
-- If response says "your balance is $X" and profile shows balance=$X, that's CORRECT, NOT MADE UP
-- If response uses numbers from tool calculations, that's CORRECT, NOT INVENTED
-- Only flag as "invented data" if response contains numbers/facts NOT in the member profile OR tool results
-
-SEVERITY GUIDELINES - BE FAIR:
-- CRITICAL: Only if major factual error that contradicts member's actual data OR if tools failed
-- HIGH: If main retirement question completely unanswered (when it should be)
-- MODERATE: If some details missing but main answer is there
-- LOW: Minor style or formatting issues
-
-RESPONSE PASSES if:
-✓ All tools executed successfully (no errors)
-✓ Answers the main retirement question asked (if in scope) OR politely declines if off-topic
-✓ Uses member's provided profile data appropriately
-✓ Uses tool calculation results appropriately
-✓ Provides accurate information about retirement rules
-✓ References member's age/balance when relevant
-✓ Stays within retirement advisory scope
-
-RESPONSE FAILS only if:
-✗ Any calculation tools failed to execute
-✗ Completely misses answering an IN-SCOPE retirement question
-✗ Answers off-topic questions outside the retirement domain
-✗ Contains major factual errors about retirement rules
-✗ Uses data that contradicts the provided member profile or tool results
-
-CRITICAL: If the response passes all criteria, the "violations" array MUST be empty [].
-Only include violations if the response actually FAILS validation.
-Keep violations to a MAXIMUM of 2-3 significant issues.
-
-JSON FORMAT REQUIREMENTS - KEEP CONCISE:
-- Each violation "detail" must be ONE SENTENCE MAX
-- Each violation "evidence" must be ONE SHORT QUOTE MAX
-- "reasoning" must be ONE SENTENCE MAX
-- If passed=true, violations MUST be an empty array []
-
-Respond with ONLY VALID, COMPLETE JSON (no other text):
-{{
-  "passed": true/false,
-  "confidence": 0.0-1.0,
-  "violations": [
-    {{
-      "code": "SHORTCODE",
-      "severity": "CRITICAL/HIGH/MODERATE/LOW",
-      "detail": "One sentence.",
-      "evidence": "Short quote."
-    }}
-  ],
-  "reasoning": "One sentence explanation."
-}}"""
+        # Fill in the template
+        prompt = prompt_template.format(
+            user_query=user_query,
+            member_info=member_info,
+            tool_info=tool_info,
+            tool_status=tool_status,
+            response_length=len(response_text),
+            response_text=response_text
+        )
         
         return prompt
     
