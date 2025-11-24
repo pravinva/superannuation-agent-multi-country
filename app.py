@@ -441,13 +441,25 @@ if page == "Advisory":
                 st.metric("Judge LLM Cost", f"${validation_cost:.6f}")
         
         render_postanswer_disclaimer(country_display)
-        
-        # Show citations
-        if st.session_state.agent_output.get("citations"):
+
+        # Show citations (only if they have meaningful content)
+        citations = st.session_state.agent_output.get("citations", [])
+        valid_citations = []
+
+        for cite in citations:
+            if isinstance(cite, dict):
+                regulation = cite.get('regulation', '')
+                # Skip citations with empty or "No details" regulation
+                if regulation and regulation != 'No details':
+                    valid_citations.append(cite)
+            elif cite:  # Non-empty string citation
+                valid_citations.append(cite)
+
+        if valid_citations:
             st.markdown("#### 📚 Citations & References")
-            for i, cite in enumerate(st.session_state.agent_output.get("citations", [])[:3], 1):
+            for i, cite in enumerate(valid_citations[:3], 1):
                 if isinstance(cite, dict):
-                    st.caption(f"[{i}] {cite.get('authority', 'Unknown')}: {cite.get('regulation', 'No details')}")
+                    st.caption(f"[{i}] {cite.get('authority', 'Unknown')}: {cite.get('regulation', '')}")
                 else:
                     st.caption(f"[{i}] {cite}")
 
