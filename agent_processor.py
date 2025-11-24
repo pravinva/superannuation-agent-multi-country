@@ -11,7 +11,7 @@ from agents.orchestrator import AgentOrchestrator
 from utils.audit import log_query_event, _escape_sql
 from utils.progress import initialize_progress_tracker, reset_progress_tracker, mark_phase_running, mark_phase_complete, mark_phase_error
 from observability import create_observability
-import traceback, uuid, time
+import traceback, uuid, time, threading
 import mlflow
 import json
 from datetime import datetime
@@ -151,6 +151,76 @@ class AuditLogger:
             logger.info(f"✅ Governance table logged: {session_id}")
         except Exception as e:
             logger.info(f"⚠️ Governance logging failed: {e}")
+
+
+def _async_audit_logging(
+    orchestrator,
+    audit_logger,
+    obs,
+    session_id,
+    user_id,
+    country,
+    query_string,
+    answer,
+    judge_verdict,
+    tools_called,
+    total_cost,
+    citations,
+    elapsed,
+    classification_method
+):
+    """
+    Async function to handle audit logging in background.
+    Runs in a separate thread to avoid blocking response.
+    """
+    try:
+        with orchestrator.track_phase("Audit Logging", "phase_8_logging", print_banner=False):
+            logger.info("📍 PHASE 8: Audit Logging (background)")
+            logger.info(f"🔄 Logging to MLflow and governance table...")
+
+            # Log to governance table
+            try:
+                audit_logger.log_to_governance_table(
+                    session_id=session_id,
+                    user_id=user_id,
+                    country=country,
+                    query_string=query_string,
+                    answer=answer,
+                    judge_verdict=judge_verdict,
+                    tools_called=tools_called,
+                    cost=total_cost,
+                    citations=citations,
+                    elapsed=elapsed,
+                    error_info=None,
+                    classification_method=classification_method
+                )
+                logger.info(f"✅ Governance table logged: {session_id}")
+            except Exception as gov_error:
+                logger.error(f"⚠️ Governance logging failed: {gov_error}", exc_info=True)
+
+            # End observability run
+            if obs:
+                try:
+                    obs.end_agent_run(
+                        response=answer or "",
+                        success=True,
+                        error=None
+                    )
+                except Exception as obs_error:
+                    logger.info(f"⚠️ Error ending observability run: {obs_error}")
+                    # Force end any active MLflow run
+                    try:
+                        import mlflow
+                        if mlflow.active_run():
+                            mlflow.end_run()
+                    except:
+                        pass
+
+            phase8_duration = orchestrator.get_last_phase_duration()
+            logger.info(f"✅ Phase 8 (Audit Logging) completed in {phase8_duration:.2f}s (background)")
+
+    except Exception as e:
+        logger.error(f"⚠️ Background audit logging error: {e}", exc_info=True)
 
 
 def agent_query(
@@ -326,125 +396,103 @@ def agent_query(
             logger.info(f"✓ Member name restored")
 
         phase7_duration = orchestrator.get_last_phase_duration()
-        
-        # PHASE 8: AUDIT LOGGING
-        logger.info("\n" + "="*70)
-        with orchestrator.track_phase("Audit Logging", "phase_8_logging", print_banner=False):
-            logger.info("📍 PHASE 8: Audit Logging")
-            logger.info(f"🔄 Logging to MLflow and governance table...")
-            # 🆕 Calculate SYNTHESIS LLM costs
-            total_synthesis_input_tokens = sum(s.get('input_tokens', 0) for s in synthesis_results)
-            total_synthesis_output_tokens = sum(s.get('output_tokens', 0) for s in synthesis_results)
-            total_synthesis_cost = sum(s.get('cost', 0.0) for s in synthesis_results)
-            
-            synthesis_model = synthesis_results[0].get('model', 'claude-opus-4-1') if synthesis_results else 'claude-opus-4-1'
-            
-            cost_breakdown['synthesis'] = {
-                'input_tokens': total_synthesis_input_tokens,
-                'output_tokens': total_synthesis_output_tokens,
-                'cost': total_synthesis_cost,
-                'model': synthesis_model,
-                'attempts': len(synthesis_results)
-            }
-            
-            logger.info(f"💰 Synthesis cost: ${total_synthesis_cost:.6f} ({synthesis_model})")
-            logger.info(f"   └─ {total_synthesis_input_tokens} input + {total_synthesis_output_tokens} output tokens across {len(synthesis_results)} attempt(s)")
-            
-            # 🆕 Calculate VALIDATION LLM costs
-            total_validation_input_tokens = sum(v.get('input_tokens', 0) for v in validation_results)
-            total_validation_output_tokens = sum(v.get('output_tokens', 0) for v in validation_results)
-            total_validation_cost = sum(v.get('cost', 0.0) for v in validation_results)
-            
-            validation_model = validation_results[0].get('model', 'claude-sonnet-4') if validation_results else 'claude-sonnet-4'
-            
-            cost_breakdown['validation'] = {
-                'input_tokens': total_validation_input_tokens,
-                'output_tokens': total_validation_output_tokens,
-                'cost': total_validation_cost,
-                'model': validation_model,
-                'attempts': len(validation_results)
-            }
-            
-            logger.info(f"💰 Validation cost: ${total_validation_cost:.6f} ({validation_model})")
-            logger.info(f"   └─ {total_validation_input_tokens} input + {total_validation_output_tokens} output tokens across {len(validation_results)} attempt(s)")
-            
-            # 🆕 Calculate TOTAL COST
-            total_cost = total_synthesis_cost + total_validation_cost
-            
-            cost_breakdown['total'] = {
-                'synthesis_cost': total_synthesis_cost,
-                'validation_cost': total_validation_cost,
-                'total_cost': total_cost,
-                'synthesis_tokens': total_synthesis_input_tokens + total_synthesis_output_tokens,
-                'validation_tokens': total_validation_input_tokens + total_validation_output_tokens,
-                'total_tokens': (total_synthesis_input_tokens + total_synthesis_output_tokens + 
-                               total_validation_input_tokens + total_validation_output_tokens)
-            }
-            
-            elapsed = time.time() - start_all
-            
-            logger.info(f"\n{'='*70}")
-            logger.info(f"✅ Query completed in {elapsed:.2f}s")
-            logger.info(f"💰 TOTAL COST: ${total_cost:.6f}")
-            logger.info(f"   ├─ Synthesis (Opus 4.1):  ${total_synthesis_cost:.6f}")
-            logger.info(f"   └─ Validation (Sonnet 4): ${total_validation_cost:.6f}")
-            logger.info(f"🔧 Tools used: {', '.join(tools_called)}")
-            logger.info(f"📊 Total tokens: {cost_breakdown['total']['total_tokens']:,}")
-            logger.info(f"\n⏱️  PHASE TIMING BREAKDOWN:")
-            logger.info(f"   Phase 1 (Retrieval):     {phase1_duration:.2f}s")
-            logger.info(f"   Phase 2 (Anonymization): {phase2_duration:.2f}s")
-            logger.info(f"   Phase 4 (Execution):     {phase4_duration:.2f}s")
-            logger.info(f"   Phase 5 (Synthesis):     {synthesis_duration:.2f}s (actual LLM time)")
-            logger.info(f"   Phase 6 (Validation):    {validation_duration:.2f}s (actual LLM time)")
-            logger.info(f"   Phase 7 (Restoration):   {phase7_duration:.2f}s")
-            logger.info(f"   Phase 8 (Logging):       (in progress...)")
-            logger.info(f"{'='*70}\n")
-            
-            # ✅ Log to governance table FIRST (before ending MLflow run)
-            try:
-                # Extract classification method from result_dict
-                classification_info = result_dict.get('classification', {})
-                classification_method = classification_info.get('method', 'unknown')
-                
-                audit_logger.log_to_governance_table(
-                    session_id=session_id,
-                    user_id=user_id,
-                    country=country,
-                    query_string=query_string,
-                    answer=answer,
-                    judge_verdict=judge_verdict,
-                    tools_called=tools_called,
-                    cost=total_cost,
-                    citations=citations,
-                    elapsed=elapsed,
-                    error_info=None,
-                    classification_method=classification_method
-                )
-                logger.info(f"✅ Governance table logged: {session_id}")
-            except Exception as gov_error:
-                logger.error(f"⚠️ Governance logging failed: {gov_error}", exc_info=True)
-            
-            # ✅ End observability run AFTER all logging is complete
-            # This ends the MLflow run that was started in start_agent_run()
-            if obs:
-                try:
-                    obs.end_agent_run(
-                        response=answer or "",
-                        success=True,
-                        error=None
-                    )
-                except Exception as obs_error:
-                    logger.info(f"⚠️ Error ending observability run: {obs_error}")
-                    # Force end any active MLflow run
-                    try:
-                        import mlflow
-                        if mlflow.active_run():
-                            mlflow.end_run()
-                    except:
-                        pass
 
-        # Get Phase 8 duration from orchestrator
-        phase8_duration = orchestrator.get_last_phase_duration()
+        # 🆕 Calculate SYNTHESIS LLM costs
+        total_synthesis_input_tokens = sum(s.get('input_tokens', 0) for s in synthesis_results)
+        total_synthesis_output_tokens = sum(s.get('output_tokens', 0) for s in synthesis_results)
+        total_synthesis_cost = sum(s.get('cost', 0.0) for s in synthesis_results)
+
+        synthesis_model = synthesis_results[0].get('model', 'claude-opus-4-1') if synthesis_results else 'claude-opus-4-1'
+
+        cost_breakdown['synthesis'] = {
+            'input_tokens': total_synthesis_input_tokens,
+            'output_tokens': total_synthesis_output_tokens,
+            'cost': total_synthesis_cost,
+            'model': synthesis_model,
+            'attempts': len(synthesis_results)
+        }
+
+        logger.info(f"💰 Synthesis cost: ${total_synthesis_cost:.6f} ({synthesis_model})")
+        logger.info(f"   └─ {total_synthesis_input_tokens} input + {total_synthesis_output_tokens} output tokens across {len(synthesis_results)} attempt(s)")
+
+        # 🆕 Calculate VALIDATION LLM costs
+        total_validation_input_tokens = sum(v.get('input_tokens', 0) for v in validation_results)
+        total_validation_output_tokens = sum(v.get('output_tokens', 0) for v in validation_results)
+        total_validation_cost = sum(v.get('cost', 0.0) for v in validation_results)
+
+        validation_model = validation_results[0].get('model', 'claude-sonnet-4') if validation_results else 'claude-sonnet-4'
+
+        cost_breakdown['validation'] = {
+            'input_tokens': total_validation_input_tokens,
+            'output_tokens': total_validation_output_tokens,
+            'cost': total_validation_cost,
+            'model': validation_model,
+            'attempts': len(validation_results)
+        }
+
+        logger.info(f"💰 Validation cost: ${total_validation_cost:.6f} ({validation_model})")
+        logger.info(f"   └─ {total_validation_input_tokens} input + {total_validation_output_tokens} output tokens across {len(validation_results)} attempt(s)")
+
+        # 🆕 Calculate TOTAL COST
+        total_cost = total_synthesis_cost + total_validation_cost
+
+        cost_breakdown['total'] = {
+            'synthesis_cost': total_synthesis_cost,
+            'validation_cost': total_validation_cost,
+            'total_cost': total_cost,
+            'synthesis_tokens': total_synthesis_input_tokens + total_synthesis_output_tokens,
+            'validation_tokens': total_validation_input_tokens + total_validation_output_tokens,
+            'total_tokens': (total_synthesis_input_tokens + total_synthesis_output_tokens +
+                           total_validation_input_tokens + total_validation_output_tokens)
+        }
+
+        elapsed = time.time() - start_all
+
+        logger.info(f"\n{'='*70}")
+        logger.info(f"✅ Query completed in {elapsed:.2f}s")
+        logger.info(f"💰 TOTAL COST: ${total_cost:.6f}")
+        logger.info(f"   ├─ Synthesis (Opus 4.1):  ${total_synthesis_cost:.6f}")
+        logger.info(f"   └─ Validation (Sonnet 4): ${total_validation_cost:.6f}")
+        logger.info(f"🔧 Tools used: {', '.join(tools_called)}")
+        logger.info(f"📊 Total tokens: {cost_breakdown['total']['total_tokens']:,}")
+        logger.info(f"\n⏱️  PHASE TIMING BREAKDOWN:")
+        logger.info(f"   Phase 1 (Retrieval):     {phase1_duration:.2f}s")
+        logger.info(f"   Phase 2 (Anonymization): {phase2_duration:.2f}s")
+        logger.info(f"   Phase 4 (Execution):     {phase4_duration:.2f}s")
+        logger.info(f"   Phase 5 (Synthesis):     {synthesis_duration:.2f}s (actual LLM time)")
+        logger.info(f"   Phase 6 (Validation):    {validation_duration:.2f}s (actual LLM time)")
+        logger.info(f"   Phase 7 (Restoration):   {phase7_duration:.2f}s")
+        logger.info(f"   Phase 8 (Logging):       (running in background...)")
+        logger.info(f"{'='*70}\n")
+
+        # PHASE 8: AUDIT LOGGING (ASYNC - Non-blocking)
+        # Extract classification method for async logging
+        classification_info = result_dict.get('classification', {})
+        classification_method = classification_info.get('method', 'unknown')
+
+        # Start audit logging in background thread
+        audit_thread = threading.Thread(
+            target=_async_audit_logging,
+            args=(
+                orchestrator,
+                audit_logger,
+                obs,
+                session_id,
+                user_id,
+                country,
+                query_string,
+                answer,
+                judge_verdict,
+                tools_called,
+                total_cost,
+                citations,
+                elapsed,
+                classification_method
+            ),
+            daemon=True  # Thread will not block program exit
+        )
+        audit_thread.start()
+        logger.info("🚀 Audit logging started in background thread")
     
     except Exception as e:
         error_info = traceback.format_exc()
