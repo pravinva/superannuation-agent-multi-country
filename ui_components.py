@@ -752,27 +752,31 @@ def render_configuration_tab():
 
 
 def update_all_configuration(sql_id, main_temp, main_tokens, judge_temp, judge_tokens):
-    """Update config.py with all settings."""
+    """Update config/config.yaml with all settings."""
     import os
+    import yaml
+    from pathlib import Path
+
     try:
-        cfg = os.path.join(os.path.dirname(__file__), "config.py")
-        with open(cfg, "r") as f:
-            lines = f.readlines()
-        
-        with open(cfg, "w") as f:
-            for line in lines:
-                if line.strip().startswith("SQL_WAREHOUSE_ID ="):
-                    f.write(f'SQL_WAREHOUSE_ID = "{sql_id}"\n')
-                elif line.strip().startswith("MAIN_LLM_TEMPERATURE ="):
-                    f.write(f"MAIN_LLM_TEMPERATURE = {main_temp}\n")
-                elif line.strip().startswith("MAIN_LLM_MAX_TOKENS ="):
-                    f.write(f"MAIN_LLM_MAX_TOKENS = {main_tokens}\n")
-                elif line.strip().startswith("JUDGE_LLM_TEMPERATURE ="):
-                    f.write(f"JUDGE_LLM_TEMPERATURE = {judge_temp}\n")
-                elif line.strip().startswith("JUDGE_LLM_MAX_TOKENS ="):
-                    f.write(f"JUDGE_LLM_MAX_TOKENS = {judge_tokens}\n")
-                else:
-                    f.write(line)
+        # Path to config.yaml
+        config_dir = Path(__file__).parent / "config"
+        config_file = config_dir / "config.yaml"
+
+        # Load current config
+        with open(config_file, "r") as f:
+            config = yaml.safe_load(f)
+
+        # Update values
+        config['databricks']['sql_warehouse_id'] = sql_id
+        config['llm']['temperature'] = float(main_temp)
+        config['llm']['max_tokens'] = int(main_tokens)
+        config['validation_llm']['temperature'] = float(judge_temp)
+        config['validation_llm']['max_tokens'] = int(judge_tokens)
+
+        # Write back to file
+        with open(config_file, "w") as f:
+            yaml.safe_dump(config, f, default_flow_style=False, sort_keys=False)
+
         return True
     except Exception as e:
         import logging

@@ -2,20 +2,47 @@
 # Environment variables can override any setting using: AGENT_{SECTION}_{KEY}
 # Example: AGENT_LLM_TEMPERATURE=0.5
 
-# LLM Configuration
+# Main LLM Configuration (for agent synthesis and planning)
 llm:
-  endpoint: "databricks-claude-sonnet-4"
+  endpoint: "databricks-claude-opus-4-1"
   temperature: 0.2
-  max_tokens: 4000
+  max_tokens: 750
   timeout: 120
   max_retries: 3
 
-# Validation LLM Configuration
+# Validation LLM Configuration (for LLM-as-a-Judge)
 validation_llm:
   endpoint: "databricks-claude-sonnet-4"
-  temperature: 0.0
-  max_tokens: 2000
+  temperature: 0.1
+  max_tokens: 300
   confidence_threshold: 0.70
+  max_validation_attempts: 2
+
+# Classifier LLM Configuration (Stage 3 fallback)
+classifier_llm:
+  endpoint: "databricks-gpt-oss-120b"
+  temperature: 0.0
+  max_tokens: 500
+
+# Databricks Configuration
+databricks:
+  sql_warehouse_id: "4b9b953939869799"
+  unity_catalog: "super_advisory_demo"
+  unity_schema: "member_data"
+  governance_table: "governance"
+  member_profiles_table: "member_profiles"
+
+# MLflow Configuration
+mlflow:
+  prod_experiment_path: "/Users/pravin.varma@databricks.com/prodretirement-advisory"
+  offline_eval_path: "/Users/pravin.varma@databricks.com/retirement-eval"
+
+# Brand Configuration
+brand:
+  brand_name: "Global Retirement Advisory"
+  subtitle: "Enterprise-Grade Agentic AI on Databricks"
+  logo_url: "logo.png"
+  support_email: "support@example.com"
 
 # Country-specific settings
 countries:
@@ -28,8 +55,8 @@ countries:
   - code: "UK"
     name: "United Kingdom"
     enabled: true
-  - code: "NZ"
-    name: "New Zealand"
+  - code: "IN"
+    name: "India"
     enabled: true
 
 # Agent Behavior
