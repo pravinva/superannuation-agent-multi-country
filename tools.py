@@ -156,10 +156,10 @@ def _call_in_tool(tool_id, member_id, profile, withdrawal_amount, warehouse_id):
         query = f"""
         SELECT super_advisory_demo.pension_calculators.in_calculate_nps_benefits(
             '{member_id}',
+            {age},
             {nps_balance},
             {annuity_pct},
-            {pension_rate},
-            {age}
+            {pension_rate}
         ) AS result
         """
         tool_config = ('NPS Benefits Calculator', 'in_calculate_nps_benefits',
@@ -180,14 +180,27 @@ def _call_in_tool(tool_id, member_id, profile, withdrawal_amount, warehouse_id):
         calculation_note = f"EPS pension calculated on EPF portion: {epf_balance:,.2f} INR (75% of total)"
     
     elif tool_id == "projection":
+        # Get retirement age and contribution amounts from profile with defaults
+        retirement_age = int(profile.get('retirement_age', 60))
+        monthly_epf_contribution = float(profile.get('monthly_epf_contribution', 5000))
+        monthly_nps_contribution = float(profile.get('monthly_nps_contribution', 2000))
+        projection_years = retirement_age - age if retirement_age > age else 20
+
         query = f"""
         SELECT super_advisory_demo.pension_calculators.in_project_retirement_corpus(
-            '{member_id}', {age}, {total_balance}, {withdrawal_amount_num}, 20
+            '{member_id}',
+            {age},
+            {epf_balance},
+            {nps_balance},
+            {monthly_epf_contribution},
+            {monthly_nps_contribution},
+            {retirement_age},
+            {projection_years}
         ) as result
         """
         tool_config = ('Retirement Corpus Projection', 'in_project_retirement_corpus',
                       'EPFO', ['IN-INTEREST-001'])
-        calculation_note = f"Projection based on total balance: {total_balance:,.2f} INR"
+        calculation_note = f"Projection based on EPF: {epf_balance:,.2f} + NPS: {nps_balance:,.2f} INR"
     
     else:
         return {"error": f"Unknown tool_id: {tool_id}"}
