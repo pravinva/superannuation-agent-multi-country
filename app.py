@@ -165,16 +165,15 @@ if page == "Advisory":
                 if st.button(button_label, key=f"btn_{member_id}_{country_code}", use_container_width=True, type=button_type):
                     st.session_state.selected_member = member_id
                     st.rerun()
-                
+
                 render_member_card(member, is_selected, country_display)
-    
+
+    # ✅ Don't auto-select first member - causes widget state changes on every render
+    # Only use selected member if one has been explicitly chosen
     if st.session_state.selected_member:
-        member = next((m for m in members if m.get('member_id') == st.session_state.selected_member), members[0] if members else {})
+        member = next((m for m in members if m.get('member_id') == st.session_state.selected_member), None)
     else:
-        member = members[0] if members else {}
-    
-    if member:
-        st.session_state.selected_member = member.get('member_id')
+        member = None
     
     st.markdown("---")
     st.subheader("💬 Ask Your Question")
