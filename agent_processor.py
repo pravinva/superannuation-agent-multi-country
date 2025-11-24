@@ -182,8 +182,8 @@ def agent_query(
     tools_called = []
     total_cost = 0.0
     cost_breakdown = {}
-    
-    logger = AuditLogger()
+
+    audit_logger = AuditLogger()
     
     # ✅ INITIALIZE OBSERVABILITY (MLflow + Lakehouse Monitoring)
     obs = None
@@ -406,7 +406,7 @@ def agent_query(
                 classification_info = result_dict.get('classification', {})
                 classification_method = classification_info.get('method', 'unknown')
                 
-                logger.log_to_governance_table(
+                audit_logger.log_to_governance_table(
                     session_id=session_id,
                     user_id=user_id,
                     country=country,
@@ -456,7 +456,7 @@ def agent_query(
         mark_phase_error('phase_4_execution', str(e))
         
         # Log error to governance table FIRST
-        logger.log_to_governance_table(
+        audit_logger.log_to_governance_table(
             session_id=session_id,
             user_id=user_id,
             country=country,
