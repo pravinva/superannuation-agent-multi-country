@@ -10,9 +10,21 @@ Beautiful progress tracking for the 8-phase agent pipeline:
 - Clean, modern design
 """
 
-import streamlit as st
 from datetime import datetime
 from typing import Dict, Optional
+from shared.logging_config import get_logger
+
+# Conditional streamlit import for testing compatibility
+try:
+    import streamlit as st
+    STREAMLIT_AVAILABLE = True
+except ImportError:
+    # Mock streamlit for testing environments
+    from unittest.mock import MagicMock
+    st = MagicMock()
+    STREAMLIT_AVAILABLE = False
+
+logger = get_logger(__name__)
 
 # ============================================================================
 # PHASE CONFIGURATION
@@ -314,7 +326,7 @@ def render_progress_fragment():
         # Silent fail - never let UI updates break agent execution
         # Log to console for debugging
         import traceback
-        print(f"⚠️ Fragment render error: {e}")
+        logger.error(f"⚠️ Fragment render error: {e}")
         pass
 
 
@@ -372,7 +384,7 @@ def _update_progress_display():
         # ✅ CRITICAL: Silent fail - never let UI updates break agent execution
         # Log to console for debugging
         import traceback
-        print(f"⚠️ Progress display error (silent): {e}")
+        logger.error(f"⚠️ Progress display error (silent): {e}")
         pass
 
 

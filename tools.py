@@ -1,14 +1,16 @@
 # tools.py - Tool Execution Logic (NOT a utility!)
 
-# ✅ Fixed: All type conversion errors resolved
-# ✅ All 4 countries: AU, US, UK, IN
-# ✅ NEW: India tools explicitly show EPF/NPS balance split
-# ✅ All citations loaded from registry
+# ✅ REFACTORED: Eliminated 90% duplication for AU/US/UK
+# ✅ Uses UnifiedToolExecutor for AU/US/UK (config-driven)
+# ✅ India (IN) preserved with special EPF/NPS handling
+# ✅ Integrated with centralized logging
 # ✅ Error handling for failed UC functions
 # ✅ Now uses utils.lakehouse for SQL execution
 
 from config import SQL_WAREHOUSE_ID
 from utils.lakehouse import execute_sql_statement, get_citations
+from tools.tool_executor import UnifiedToolExecutor, ToolExecutionError, ToolConfigurationError
+from shared.logging_config import get_logger
 import time
 
 # ============================================================================
@@ -17,189 +19,90 @@ import time
 # retirement calculations across different countries
 # ============================================================================
 
+# Initialize logger
+logger = get_logger(__name__)
+
+# Initialize unified executor for AU/US/UK
+_unified_executor = None
+
+def _get_unified_executor(warehouse_id: str) -> UnifiedToolExecutor:
+    """
+    Get or create unified tool executor instance.
+
+    Args:
+        warehouse_id: SQL warehouse ID
+
+    Returns:
+        UnifiedToolExecutor instance
+    """
+    global _unified_executor
+    if _unified_executor is None or _unified_executor.warehouse_id != warehouse_id:
+        _unified_executor = UnifiedToolExecutor(warehouse_id=warehouse_id, logger=logger)
+        logger.debug("Initialized UnifiedToolExecutor")
+    return _unified_executor
+
 # ============================================================================
-# AUSTRALIA TOOLS
+# AUSTRALIA, USA, UK TOOLS - UNIFIED IMPLEMENTATION
 # ============================================================================
 
 def _call_au_tool(tool_id, member_id, profile, withdrawal_amount, warehouse_id):
-    """Call Australia UC functions"""
-    start_time = time.time()
-    
-    if tool_id == "tax":
-        query = f"""
-        SELECT super_advisory_demo.pension_calculators.au_calculate_tax(
-            '{member_id}', {profile['age']}, {profile.get('preservation_age', 60)},
-            {profile['super_balance']}, {withdrawal_amount}
-        ) as result
-        """
-    
-    elif tool_id == "benefit":
-        query = f"""
-        SELECT super_advisory_demo.pension_calculators.au_check_pension_impact(
-            '{member_id}', {profile['age']}, {profile['super_balance']},
-            {profile.get('other_assets', 0)}, '{profile.get('marital_status', 'Single')}',
-            'Homeowner'
-        ) as result
-        """
-    
-    elif tool_id == "projection":
-        query = f"""
-        SELECT super_advisory_demo.pension_calculators.au_project_balance(
-            '{member_id}', {profile['age']}, {profile['super_balance']},
-            {profile.get('preservation_age', 60)}, 20
-        ) as result
-        """
-    
-    else:
-        return {"error": f"Unknown tool_id: {tool_id}"}
-    
-    result = execute_sql_statement(query, warehouse_id)
-    duration = time.time() - start_time
-    
-    if not result or not result.result or not result.result.data_array:
-        return {"error": f"No result from au_{tool_id}"}
-    
-    calculation = result.result.data_array[0][0]
-    
-    tool_config = {
-        'tax': ('ATO Tax Calculator', 'au_calculate_tax', 'Australian Taxation Office', ['AU-TAX-001']),
-        'benefit': ('Centrelink Calculator', 'au_check_pension_impact', 'Department of Social Services', ['AU-PENSION-001']),
-        'projection': ('Superannuation Projection', 'au_project_balance', 'ASFA', ['AU-STANDARD-001'])
-    }
-    
-    name, func, auth, citations_ids = tool_config[tool_id]
-    
-    return {
-        "tool_name": name,
-        "tool_id": tool_id,
-        "uc_function": func,
-        "authority": auth,
-        "calculation": str(calculation),
-        "citations": get_citations(citations_ids, warehouse_id),
-        "duration": round(duration, 2)
-    }
+    """
+    Call Australia UC functions using unified executor.
 
-# ============================================================================
-# USA TOOLS
-# ============================================================================
+    Delegated to UnifiedToolExecutor for configuration-driven execution.
+    """
+    executor = _get_unified_executor(warehouse_id)
+    try:
+        return executor.execute_tool(
+            country="AU",
+            tool_id=tool_id,
+            member_id=member_id,
+            profile=profile,
+            withdrawal_amount=withdrawal_amount
+        )
+    except (ToolExecutionError, ToolConfigurationError) as e:
+        logger.error(f"AU tool execution failed: {e}")
+        return {"error": str(e)}
+
 
 def _call_us_tool(tool_id, member_id, profile, withdrawal_amount, warehouse_id):
-    """Call USA UC functions"""
-    start_time = time.time()
-    
-    if tool_id == "tax":
-        query = f"""
-        SELECT super_advisory_demo.pension_calculators.us_calculate_401k_tax(
-            '{member_id}', '401k', {withdrawal_amount}, {profile['age']}
-        ) as result
-        """
-    
-    elif tool_id == "benefit":
-        query = f"""
-        SELECT super_advisory_demo.pension_calculators.us_check_social_security(
-            '{member_id}', {profile['age']}, '{profile.get('marital_status', 'Single')}',
-            {profile['super_balance']}
-        ) as result
-        """
-    
-    elif tool_id == "projection":
-        query = f"""
-        SELECT super_advisory_demo.pension_calculators.us_project_401k_balance(
-            '{member_id}', {profile['age']}, 67, {profile['super_balance']}, 10000, 20
-        ) as result
-        """
-    
-    else:
-        return {"error": f"Unknown tool_id: {tool_id}"}
-    
-    result = execute_sql_statement(query, warehouse_id)
-    duration = time.time() - start_time
-    
-    if not result or not result.result or not result.result.data_array:
-        return {"error": f"No result from us_{tool_id}"}
-    
-    calculation = result.result.data_array[0][0]
-    
-    tool_config = {
-        'tax': ('IRS 401(k) Tax Calculator', 'us_calculate_401k_tax', 'Internal Revenue Service', ['US-TAX-001', 'US-PENALTY-001']),
-        'benefit': ('Social Security Calculator', 'us_check_social_security', 'Social Security Administration', ['US-SS-001']),
-        'projection': ('401(k) Projection', 'us_project_401k_balance', 'Department of Labor', ['US-RMD-001'])
-    }
-    
-    name, func, auth, citations_ids = tool_config[tool_id]
-    
-    return {
-        "tool_name": name,
-        "tool_id": tool_id,
-        "uc_function": func,
-        "authority": auth,
-        "calculation": str(calculation),
-        "citations": get_citations(citations_ids, warehouse_id),
-        "duration": round(duration, 2)
-    }
+    """
+    Call USA UC functions using unified executor.
 
-# ============================================================================
-# UK TOOLS
-# ============================================================================
+    Delegated to UnifiedToolExecutor for configuration-driven execution.
+    """
+    executor = _get_unified_executor(warehouse_id)
+    try:
+        return executor.execute_tool(
+            country="US",
+            tool_id=tool_id,
+            member_id=member_id,
+            profile=profile,
+            withdrawal_amount=withdrawal_amount
+        )
+    except (ToolExecutionError, ToolConfigurationError) as e:
+        logger.error(f"US tool execution failed: {e}")
+        return {"error": str(e)}
+
 
 def _call_uk_tool(tool_id, member_id, profile, withdrawal_amount, warehouse_id):
-    """Call UK UC functions"""
-    start_time = time.time()
-    
-    if tool_id == "tax":
-        query = f"""
-        SELECT super_advisory_demo.pension_calculators.uk_calculate_pension_tax(
-            '{member_id}', {profile['age']}, {profile['super_balance']}, {withdrawal_amount}, 'standard'
-        ) as result
-        """
-    
-    elif tool_id == "benefit":
-        ni_years = profile.get("ni_qualifying_years", 35)
-        marital_status = profile.get("marital_status", "married")
-        query = f"""
-        SELECT super_advisory_demo.pension_calculators.uk_check_state_pension(
-            '{member_id}',
-            {profile['age']},
-            {ni_years},
-            '{marital_status}'
-        ) AS result
-        """
-    
-    elif tool_id == "projection":
-        query = f"""
-        SELECT super_advisory_demo.pension_calculators.uk_project_pension_balance(
-            '{member_id}', {profile['age']}, {profile['super_balance']}, {withdrawal_amount}, 20
-        ) as result
-        """
-    
-    else:
-        return {"error": f"Unknown tool_id: {tool_id}"}
-    
-    result = execute_sql_statement(query, warehouse_id)
-    duration = time.time() - start_time
-    
-    if not result or not result.result or not result.result.data_array:
-        return {"error": f"No result from uk_{tool_id}"}
-    
-    calculation = result.result.data_array[0][0]
-    
-    tool_config = {
-        'tax': ('HMRC Pension Tax Calculator', 'uk_calculate_pension_tax', 'HM Revenue & Customs', ['UK-TAX-001']),
-        'benefit': ('State Pension Calculator', 'uk_check_state_pension', 'Department for Work and Pensions', ['UK-PENSION-001']),
-        'projection': ('UK Pension Projection', 'uk_project_pension_balance', 'FCA', ['UK-DRAWDOWN-001'])
-    }
-    
-    name, func, auth, citations_ids = tool_config[tool_id]
-    
-    return {
-        "tool_name": name,
-        "tool_id": tool_id,
-        "uc_function": func,
-        "authority": auth,
-        "calculation": str(calculation),
-        "citations": get_citations(citations_ids, warehouse_id),
-        "duration": round(duration, 2)
-    }
+    """
+    Call UK UC functions using unified executor.
+
+    Delegated to UnifiedToolExecutor for configuration-driven execution.
+    """
+    executor = _get_unified_executor(warehouse_id)
+    try:
+        return executor.execute_tool(
+            country="UK",
+            tool_id=tool_id,
+            member_id=member_id,
+            profile=profile,
+            withdrawal_amount=withdrawal_amount
+        )
+    except (ToolExecutionError, ToolConfigurationError) as e:
+        logger.error(f"UK tool execution failed: {e}")
+        return {"error": str(e)}
 
 # ============================================================================
 # INDIA TOOLS - WITH EPF/NPS SPLIT TRANSPARENCY
@@ -214,15 +117,15 @@ def _call_in_tool(tool_id, member_id, profile, withdrawal_amount, warehouse_id):
         age = int(float(str(profile.get('age', 0))))
         total_balance = float(str(profile.get('super_balance', 0)).replace(',', ''))
         withdrawal_amount_num = float(str(withdrawal_amount).replace(',', '')) if withdrawal_amount else 0.0
-        
+
         years_of_service_raw = profile.get('years_of_service')
         if years_of_service_raw:
             years_of_service = int(float(str(years_of_service_raw)))
         else:
             years_of_service = max(age - 25, 0)
-            
+
     except (ValueError, TypeError) as e:
-        print(f"❌ Type conversion error in _call_in_tool: {e}")
+        logger.error(f"Type conversion error in _call_in_tool: {e}")
         return {"error": f"Invalid data types: {e}"}
     
     # ✅ SPLIT: 75% EPF (mandatory) / 25% NPS (voluntary)
@@ -348,24 +251,24 @@ def call_individual_tool(tool_id, member_id, withdrawal_amount, country, warehou
 
 class SuperAdvisorTools:
     """Tool wrapper for agent.py compatibility"""
-    
+
     def __init__(self, warehouse_id=None):
         self.warehouse_id = warehouse_id or SQL_WAREHOUSE_ID
-        print(f"✓ SuperAdvisorTools initialized")
-    
+        logger.info("SuperAdvisorTools initialized")
+
     def get_member_profile(self, member_id):
         """Get member profile"""
         from utils.lakehouse import get_member_by_id
         return get_member_by_id(member_id)
-    
+
     def call_tool(self, tool_id, member_id, withdrawal_amount, country):
         """Call a tool - PRIMARY METHOD FOR AGENTS"""
         result = call_individual_tool(tool_id, member_id, withdrawal_amount, country, self.warehouse_id)
-        
+
         if "error" in result:
-            print(f"❌ Tool '{tool_id}' error: {result['error']}")
+            logger.error(f"Tool '{tool_id}' error: {result['error']}")
         else:
-            print(f"✓ Tool '{tool_id}' executed successfully")
-        
+            logger.info(f"Tool '{tool_id}' executed successfully")
+
         return result
 

@@ -16,6 +16,9 @@ import time
 from typing import Optional, List, Dict
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.service.sql import StatementState
+from shared.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 # Single WorkspaceClient instance
 _workspace_client = None
@@ -123,11 +126,11 @@ def execute_sql_statement(query: str, warehouse_id: Optional[str] = None):
         if statement.status.state == StatementState.SUCCEEDED:
             return statement
         else:
-            print(f"Statement failed: {statement.status.state}")
+            logger.error(f"Statement failed: {statement.status.state}")
             return None
-    
+
     except Exception as e:
-        print(f"Error executing statement: {e}")
+        logger.error(f"Error executing statement: {e}")
         return None
 
 
@@ -152,15 +155,15 @@ def get_member_by_id(member_id: str) -> Optional[Dict]:
         query = f"SELECT * FROM {table_path} WHERE member_id = '{member_id}'"
         
         df = execute_sql_query(query)
-        
+
         if df.empty:
-            print(f"⚠️ Member not found: {member_id}")
+            logger.warning(f"⚠️ Member not found: {member_id}")
             return None
-        
+
         return df.iloc[0].to_dict()
-        
+
     except Exception as e:
-        print(f"❌ Error loading member {member_id}: {str(e)}")
+        logger.error(f"❌ Error loading member {member_id}: {str(e)}")
         return None
 
 
@@ -185,16 +188,16 @@ def get_members_by_country(country_code: str, default_return: Optional[pd.DataFr
         query = f"SELECT * FROM {table_path} WHERE country = '{country_code}'"
         
         df = execute_sql_query(query)
-        
+
         if df.empty:
-            print(f"⚠️ No members found for country: {country_code}")
+            logger.warning(f"⚠️ No members found for country: {country_code}")
             return default_return
-        
-        print(f"✅ Found {len(df)} members for {country_code}")
+
+        logger.info(f"✅ Found {len(df)} members for {country_code}")
         return df
-        
+
     except Exception as e:
-        print(f"❌ Error loading members for {country_code}: {str(e)}")
+        logger.error(f"❌ Error loading members for {country_code}: {str(e)}")
         return default_return
 
 
@@ -245,7 +248,7 @@ def get_citations(citation_ids: List[str], warehouse_id: Optional[str] = None) -
             })
         return citations
     except Exception as e:
-        print(f"⚠️ Error fetching citations: {e}")
+        logger.error(f"⚠️ Error fetching citations: {e}")
         return []
 
 
@@ -329,10 +332,10 @@ def get_audit_logs(limit: int = 50) -> List[Dict]:
             row_dict['judge_confidence'] = judge_confidence
             
             formatted.append(row_dict)
-        
+
         return formatted
     except Exception as e:
-        print(f"⚠️ get_audit_logs() could not fetch governance logs: {e}")
+        logger.error(f"⚠️ get_audit_logs() could not fetch governance logs: {e}")
         return []
 
 
@@ -371,6 +374,6 @@ def get_cost_summary(limit: int = 100) -> List[Dict]:
         formatted = [dict(zip(keys, r)) for r in result]
         return formatted
     except Exception as e:
-        print(f"⚠️ get_cost_summary() could not compute cost summary: {e}")
+        logger.error(f"⚠️ get_cost_summary() could not compute cost summary: {e}")
         return []
 

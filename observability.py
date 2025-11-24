@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+from shared.logging_config import get_logger
+
+logger = get_logger(__name__)
+
 """
 Observability & Monitoring for SuperAdvisor Agent
 Using Databricks native tools: MLflow + Lakehouse Monitoring
@@ -53,18 +57,18 @@ class AgentObservability:
         if self.enable_mlflow:
             self._setup_mlflow()
         
-        print(f"✅ AgentObservability initialized")
-        print(f"   MLflow: {'Enabled' if enable_mlflow else 'Disabled'}")
-        print(f"   Lakehouse Monitoring: {'Enabled' if enable_lakehouse_monitoring else 'Disabled'}")
+        logger.info(f"✅ AgentObservability initialized")
+        logger.info(f"   MLflow: {'Enabled' if enable_mlflow else 'Disabled'}")
+        logger.info(f"   Lakehouse Monitoring: {'Enabled' if enable_lakehouse_monitoring else 'Disabled'}")
     
     def _setup_mlflow(self):
         """Setup MLflow experiment and tracking."""
         try:
             mlflow.set_tracking_uri("databricks")
             mlflow.set_experiment(self.experiment_path)
-            print(f"✅ MLflow experiment: {self.experiment_path}")
+            logger.info(f"✅ MLflow experiment: {self.experiment_path}")
         except Exception as e:
-            print(f"⚠️ MLflow setup warning: {e}")
+            logger.info(f"⚠️ MLflow setup warning: {e}")
             self.enable_mlflow = False
     
     # ========== MLFLOW TRACKING ==========
@@ -96,10 +100,10 @@ class AgentObservability:
             try:
                 active_run = mlflow.active_run()
                 if active_run:
-                    print(f"⚠️ Closing stale MLflow run: {active_run.info.run_id}")
+                    logger.info(f"⚠️ Closing stale MLflow run: {active_run.info.run_id}")
                     mlflow.end_run()
             except Exception as cleanup_error:
-                print(f"⚠️ Error cleaning up stale run: {cleanup_error}")
+                logger.info(f"⚠️ Error cleaning up stale run: {cleanup_error}")
             
             run_name = f"agent-query-{session_id[:8]}"
             
@@ -133,7 +137,7 @@ class AgentObservability:
             return self.current_run.info.run_id
             
         except Exception as e:
-            print(f"⚠️ Error starting MLflow run: {e}")
+            logger.info(f"⚠️ Error starting MLflow run: {e}")
             return None
     
     def log_classification(self, result: Dict):
@@ -167,7 +171,7 @@ class AgentObservability:
                 mlflow.log_metric("classification.stage", 3)
             
         except Exception as e:
-            print(f"⚠️ Error logging classification: {e}")
+            logger.info(f"⚠️ Error logging classification: {e}")
     
     def log_tool_execution(self, tools_used: List[str], tool_results: Dict):
         """
@@ -203,7 +207,7 @@ class AgentObservability:
                 mlflow.log_param("tools.failures", ",".join(failed_tools))
             
         except Exception as e:
-            print(f"⚠️ Error logging tool execution: {e}")
+            logger.info(f"⚠️ Error logging tool execution: {e}")
     
     def log_synthesis(self, synthesis_results: List[Dict]):
         """
@@ -241,7 +245,7 @@ class AgentObservability:
                 mlflow.log_param("synthesis.model", synthesis_results[0].get('model', 'unknown'))
             
         except Exception as e:
-            print(f"⚠️ Error logging synthesis: {e}")
+            logger.info(f"⚠️ Error logging synthesis: {e}")
     
     def log_validation(self, validation_results: List[Dict]):
         """
@@ -295,7 +299,7 @@ class AgentObservability:
             mlflow.log_dict(final_validation, "validation_result.json")
             
         except Exception as e:
-            print(f"⚠️ Error logging validation: {e}")
+            logger.info(f"⚠️ Error logging validation: {e}")
     
     def end_agent_run(self, 
                      response: str,
@@ -314,7 +318,7 @@ class AgentObservability:
         
         # ✅ SAFETY: Check if there's actually an active run
         if not mlflow.active_run():
-            print("⚠️ No active MLflow run to end")
+            logger.info("⚠️ No active MLflow run to end")
             self.current_run = None
             return
         
@@ -358,10 +362,10 @@ class AgentObservability:
             mlflow.end_run()
             self.current_run = None
             
-            print(f"✅ MLflow run completed: ${total_cost:.6f}, {elapsed:.2f}s, {total_tokens} tokens")
+            logger.info(f"✅ MLflow run completed: ${total_cost:.6f}, {elapsed:.2f}s, {total_tokens} tokens")
             
         except Exception as e:
-            print(f"⚠️ Error ending MLflow run: {e}")
+            logger.info(f"⚠️ Error ending MLflow run: {e}")
             try:
                 mlflow.end_run(status="FAILED")
             except:
@@ -383,19 +387,19 @@ class AgentObservability:
             Monitor info or None if failed
         """
         if not self.enable_lakehouse_monitoring:
-            print("⚠️ Lakehouse Monitoring disabled")
+            logger.info("⚠️ Lakehouse Monitoring disabled")
             return None
         
         try:
-            print(f"\n🔍 Setting up Lakehouse Monitoring on {self.governance_table}...")
+            logger.info(f"\n🔍 Setting up Lakehouse Monitoring on {self.governance_table}...")
             
             # Check if monitor already exists
             try:
                 existing_monitor = self.w.quality_monitors.get(table_name=self.governance_table)
-                print(f"✅ Monitor already exists: {existing_monitor.monitor_version}")
+                logger.info(f"✅ Monitor already exists: {existing_monitor.monitor_version}")
                 return existing_monitor
             except Exception:
-                print("📊 Creating new monitor...")
+                logger.info("📊 Creating new monitor...")
             
             # Create monitor configuration
             from databricks.sdk.service.catalog import (
@@ -493,16 +497,16 @@ class AgentObservability:
                 baseline_table_name=baseline_table
             )
             
-            print(f"✅ Lakehouse Monitor created successfully!")
-            print(f"   Table: {self.governance_table}")
-            print(f"   Version: {monitor.monitor_version}")
-            print(f"   Schedule: {schedule}")
-            print(f"   Metrics: {len(custom_metrics)} custom metrics")
+            logger.info(f"✅ Lakehouse Monitor created successfully!")
+            logger.info(f"   Table: {self.governance_table}")
+            logger.info(f"   Version: {monitor.monitor_version}")
+            logger.info(f"   Schedule: {schedule}")
+            logger.info(f"   Metrics: {len(custom_metrics)} custom metrics")
             
             return monitor
             
         except Exception as e:
-            print(f"❌ Error setting up Lakehouse Monitoring: {e}")
+            logger.info(f"❌ Error setting up Lakehouse Monitoring: {e}")
             import traceback
             traceback.print_exc()
             return None
@@ -521,7 +525,7 @@ class AgentObservability:
                 return f"{workspace_url}/sql/dashboards/{monitor.dashboard_id}"
             return None
         except Exception as e:
-            print(f"⚠️ Error getting dashboard URL: {e}")
+            logger.info(f"⚠️ Error getting dashboard URL: {e}")
             return None
     
     def refresh_monitoring_metrics(self) -> bool:
@@ -532,15 +536,15 @@ class AgentObservability:
             True if successful, False otherwise
         """
         try:
-            print(f"🔄 Refreshing monitoring metrics for {self.governance_table}...")
+            logger.info(f"🔄 Refreshing monitoring metrics for {self.governance_table}...")
             
             self.w.quality_monitors.run_refresh(table_name=self.governance_table)
             
-            print("✅ Monitoring refresh triggered")
+            logger.info("✅ Monitoring refresh triggered")
             return True
             
         except Exception as e:
-            print(f"❌ Error refreshing monitoring: {e}")
+            logger.info(f"❌ Error refreshing monitoring: {e}")
             return False
     
     def get_monitoring_metrics(self, days: int = 7) -> Optional[Dict]:
@@ -594,7 +598,7 @@ class AgentObservability:
             return None
             
         except Exception as e:
-            print(f"❌ Error getting monitoring metrics: {e}")
+            logger.info(f"❌ Error getting monitoring metrics: {e}")
             return None
     
     def print_monitoring_summary(self, days: int = 7):
@@ -607,27 +611,27 @@ class AgentObservability:
         metrics = self.get_monitoring_metrics(days)
         
         if not metrics:
-            print("⚠️ No monitoring metrics available")
+            logger.info("⚠️ No monitoring metrics available")
             return
         
-        print("\n" + "=" * 70)
-        print(f"📊 MONITORING SUMMARY (Last {days} Days)")
-        print("=" * 70)
-        print(f"\n📈 Volume:")
-        print(f"  Total Queries: {metrics['total_queries']:,}")
-        print(f"  Unique Users: {metrics['unique_users']:,}")
-        print(f"  Countries Served: {metrics['countries_served']}")
-        print(f"\n💰 Cost:")
-        print(f"  Total Cost: ${metrics['total_cost']:.2f}")
-        print(f"  Avg Cost/Query: ${metrics['avg_cost']:.4f}")
-        print(f"\n⚡ Performance:")
-        print(f"  Avg Runtime: {metrics['avg_runtime']:.2f}s")
-        print(f"  P95 Runtime: {metrics['p95_runtime']:.2f}s")
-        print(f"\n✅ Quality:")
-        print(f"  Validation Pass Rate: {metrics['validation_pass_rate']*100:.1f}%")
-        print(f"  Avg Validation Attempts: {metrics['avg_validation_attempts']:.2f}")
-        print(f"  Error Rate: {metrics['error_rate']*100:.2f}%")
-        print("=" * 70 + "\n")
+        logger.info("\n" + "=" * 70)
+        logger.info(f"📊 MONITORING SUMMARY (Last {days} Days)")
+        logger.info("=" * 70)
+        logger.info(f"\n📈 Volume:")
+        logger.info(f"  Total Queries: {metrics['total_queries']:,}")
+        logger.info(f"  Unique Users: {metrics['unique_users']:,}")
+        logger.info(f"  Countries Served: {metrics['countries_served']}")
+        logger.info(f"\n💰 Cost:")
+        logger.info(f"  Total Cost: ${metrics['total_cost']:.2f}")
+        logger.info(f"  Avg Cost/Query: ${metrics['avg_cost']:.4f}")
+        logger.info(f"\n⚡ Performance:")
+        logger.info(f"  Avg Runtime: {metrics['avg_runtime']:.2f}s")
+        logger.info(f"  P95 Runtime: {metrics['p95_runtime']:.2f}s")
+        logger.info(f"\n✅ Quality:")
+        logger.info(f"  Validation Pass Rate: {metrics['validation_pass_rate']*100:.1f}%")
+        logger.info(f"  Avg Validation Attempts: {metrics['avg_validation_attempts']:.2f}")
+        logger.info(f"  Error Rate: {metrics['error_rate']*100:.2f}%")
+        logger.info("=" * 70 + "\n")
 
 
 # Convenience function for easy integration

@@ -580,12 +580,101 @@ multi-country-pension-advisor/
 ├── observability.py         # MLflow & Lakehouse Monitoring
 ├── tools.py                 # Unity Catalog function wrappers
 ├── app.py                   # Streamlit UI
+├── agents/
+│   └── orchestrator.py      # Phase tracking and timing utilities
+├── prompts/
+│   ├── template_manager.py  # Jinja2 template management
+│   └── templates/           # Jinja2 template files
+├── validation/
+│   ├── json_parser.py       # JSON extraction and parsing
+│   └── token_calculator.py  # Token counting utilities
+├── ui/
+│   ├── theme_config.py      # Country-specific UI themes
+│   ├── html_builder.py      # HTML component builders
+│   └── tab_base.py          # Base class for monitoring tabs
+├── shared/
+│   └── logging_config.py    # Centralized logging configuration
 └── utils/
     ├── formatting.py        # Currency formatting, SQL escaping
     ├── audit.py             # Governance logging
     ├── lakehouse.py         # Unity Catalog utilities
     └── progress.py          # Real-time progress tracking
 ```
+
+### New Packages (Refactored)
+
+**agents/** - Agent infrastructure
+- `orchestrator.py`: Context manager for automatic phase tracking, timing, and error handling
+  - Reduces boilerplate in agent_processor.py from 400+ lines to <150 lines
+  - Provides reusable `track_phase()` context manager
+  - Automatic MLflow logging and progress tracking
+
+**prompts/** - Prompt management
+- `template_manager.py`: Jinja2 template engine for all prompts
+  - Eliminates hard-coded prompts throughout the codebase
+  - Country-specific prompt generation with caching
+  - Integration with country_config for dynamic variables
+
+**validation/** - Validation utilities
+- `json_parser.py`: Extract and parse JSON from LLM responses
+- `token_calculator.py`: Token counting for cost estimation
+
+**ui/** - UI components
+- `theme_config.py`: Centralized country theme definitions (colors, flags, gradients)
+  - Extracted from ui_components.py and ui_dashboard.py
+  - Single source of truth for all country styling
+- `html_builder.py`: Reusable HTML builders for cards, badges, metrics
+  - Generic card builders
+  - Specialized components (member cards, question cards, activity items)
+  - System status banners
+- `tab_base.py`: Abstract base class for monitoring tabs
+  - Eliminates ~425 lines of duplicated code across 5 tabs
+  - Automatic data loading, error handling, and empty state management
+  - Consistent UI patterns across all tabs
+
+**shared/** - Shared infrastructure
+- `logging_config.py`: Centralized logging configuration
+  - Structured logging with ColoredFormatter
+  - Configurable log levels and file output
+  - Consistent logging patterns across all modules
+
+### Logging Setup
+
+**Configuration**
+
+All modules use structured logging via `shared/logging_config.py`:
+
+```python
+from shared.logging_config import get_logger, setup_logging
+
+# Initialize logging (in app.py or main entry point)
+setup_logging(
+    log_level=logging.INFO,      # DEBUG, INFO, WARNING, ERROR, CRITICAL
+    enable_file=True,             # Write logs to file
+    log_file="logs/app.log"      # Log file path
+)
+
+# Get logger in any module
+logger = get_logger(__name__)
+
+# Use structured logging
+logger.info("Processing query")
+logger.error("Failed to execute tool", exc_info=True)  # Includes stack trace
+logger.debug(f"Response: {response}")
+```
+
+**Log Levels**
+- `DEBUG`: Detailed information for diagnosing problems
+- `INFO`: Confirmation that things are working as expected
+- `WARNING`: Indication of potential problems
+- `ERROR`: Due to a more serious problem, the function has failed
+- `CRITICAL`: Serious error, the program may be unable to continue
+
+**Best Practices**
+- Production: Use `INFO` level with file logging enabled
+- Development: Use `DEBUG` level for detailed tracing
+- Error handling: Always use `exc_info=True` for exceptions
+- Consistency: All production code uses `logger`, no print statements
 
 ### Code Flow Architecture
 

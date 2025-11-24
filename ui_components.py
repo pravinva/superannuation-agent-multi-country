@@ -10,6 +10,7 @@ import streamlit as st
 import pandas as pd
 import mlflow
 from databricks.sdk import WorkspaceClient
+from ui.theme_config import COUNTRY_COLORS, COUNTRY_FLAGS, COUNTRY_WELCOME_COLORS
 
 BRANDCONFIG = {
     "brand_name": "Global Retirement Advisory",
@@ -61,37 +62,9 @@ def render_logo():
 # Advisory functions
 def render_member_card(member, is_selected=False, country="Australia"):
     """Render member card with flags, colors, and country-specific currency."""
-    
-    # Complete color/currency config with ALL keys
-    colors = {
-        "Australia": {
-            "flag": "🇦🇺", 
-            "primary": "#FFD700", 
-            "secondary": "#00843D", 
-            "currency": "A$"
-        },
-        "USA": {
-            "flag": "🇺🇸", 
-            "primary": "#B22234", 
-            "secondary": "#3C3B6E", 
-            "currency": "$"
-        },
-        "United Kingdom": {
-            "flag": "🇬🇧", 
-            "primary": "#C8102E", 
-            "secondary": "#012169", 
-            "currency": "£"
-        },
-        "India": {
-            "flag": "🇮🇳", 
-            "primary": "#FF9933", 
-            "secondary": "#138808", 
-            "currency": "₹"
-        }
-    }
-    
+
     # Get theme for country (with fallback to Australia)
-    t = colors.get(country, colors["Australia"])
+    t = COUNTRY_COLORS.get(country, COUNTRY_COLORS["Australia"])
     
     # Styling based on selection state
     border = f"5px solid {t['secondary']}" if is_selected else "1px solid #CCC"
@@ -121,44 +94,10 @@ def render_member_card(member, is_selected=False, country="Australia"):
 
 def render_country_welcome(country, intro, disclaimer):
     # Select appropriate flag for the chosen country
-    flags = {
-        "Australia": "🇦🇺",
-        "USA": "🇺🇸",
-        "United Kingdom": "🇬🇧",
-        "India": "🇮🇳"
-    }
-    country_flag = flags.get(country, "🌐")
-    
-    # ✅ National color gradients for each country (stronger colors)
-    country_colors = {
-        "Australia": {
-            "gradient": "linear-gradient(135deg, #00843D 0%, #FFD700 50%, #FFA500 100%)",  # Green to Gold
-            "border": "#FFD700",  # Gold accent
-            "text": "#0f172a",  # Dark slate for readability
-            "text_bg": "rgba(255, 255, 255, 0.85)"  # Semi-transparent white background
-        },
-        "USA": {
-            "gradient": "linear-gradient(135deg, #B22234 0%, #FFFFFF 25%, #3C3B6E 50%, #FFFFFF 75%, #B22234 100%)",  # Red to Blue via White
-            "border": "#FFD700",  # Gold accent
-            "text": "#0f172a",  # Dark slate for readability
-            "text_bg": "rgba(255, 255, 255, 0.9)"  # More opaque white background for white sections
-        },
-        "United Kingdom": {
-            "gradient": "linear-gradient(135deg, #C8102E 0%, #FFFFFF 30%, #012169 60%, #FFFFFF 85%, #C8102E 100%)",  # Red to Blue via White
-            "border": "#FFD700",  # Gold accent
-            "text": "#0f172a",  # Dark slate for readability
-            "text_bg": "rgba(255, 255, 255, 0.9)"  # More opaque white background for white sections
-        },
-        "India": {
-            "gradient": "linear-gradient(135deg, #FF9933 0%, #FFFFFF 40%, #138808 80%, #138808 100%)",  # Saffron to White to Green
-            "border": "#FF9933",  # Saffron accent
-            "text": "#0f172a",  # Dark slate for readability
-            "text_bg": "rgba(255, 255, 255, 0.85)"  # Semi-transparent white background
-        }
-    }
+    country_flag = COUNTRY_FLAGS.get(country, "🌐")
     
     # Get colors for current country (default to Australia if not found)
-    colors = country_colors.get(country, country_colors["Australia"])
+    colors = COUNTRY_WELCOME_COLORS.get(country, COUNTRY_WELCOME_COLORS["Australia"])
     
     # Render country header with flag
     st.subheader(f"{country_flag} Advisory for {country}")

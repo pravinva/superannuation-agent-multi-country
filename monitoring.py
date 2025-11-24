@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+from shared.logging_config import get_logger
+
+logger = get_logger(__name__)
+
 """
 Observability and Monitoring for SuperAdvisor Agent
 Uses native Databricks tools: MLflow and Lakehouse Monitoring
@@ -43,9 +47,9 @@ class AgentMonitor:
         try:
             mlflow.set_tracking_uri("databricks")
             mlflow.set_experiment(self.experiment_path)
-            print(f"✅ MLflow monitoring initialized: {self.experiment_path}")
+            logger.info(f"✅ MLflow monitoring initialized: {self.experiment_path}")
         except Exception as e:
-            print(f"⚠️ MLflow initialization warning: {e}")
+            logger.info(f"⚠️ MLflow initialization warning: {e}")
     
     def log_query_execution(self, 
                            session_id: str,
@@ -153,11 +157,11 @@ class AgentMonitor:
                 mlflow.set_tag("classification_method", classification.get('method', 'unknown'))
                 mlflow.set_tag("environment", "production")
                 
-                print(f"✅ MLflow logged: {run.info.run_id}")
+                logger.info(f"✅ MLflow logged: {run.info.run_id}")
                 return run.info.run_id
                 
         except Exception as e:
-            print(f"⚠️ MLflow logging error: {e}")
+            logger.info(f"⚠️ MLflow logging error: {e}")
             return None
     
     def log_classifier_metrics(self, classifier_metrics: Dict, batch_size: int = 100):
@@ -192,10 +196,10 @@ class AgentMonitor:
                 mlflow.set_tag("metric_type", "classifier")
                 mlflow.set_tag("timestamp", datetime.now().isoformat())
                 
-                print(f"✅ Classifier metrics logged to MLflow")
+                logger.info(f"✅ Classifier metrics logged to MLflow")
                 
         except Exception as e:
-            print(f"⚠️ Classifier metrics logging error: {e}")
+            logger.info(f"⚠️ Classifier metrics logging error: {e}")
     
     def log_model_performance(self, 
                              model_type: str,
@@ -225,10 +229,10 @@ class AgentMonitor:
                 mlflow.log_dict(metrics, f"{model_type}_metrics.json")
                 mlflow.set_tag("metric_type", "model_performance")
                 
-                print(f"✅ {model_type} model performance logged")
+                logger.info(f"✅ {model_type} model performance logged")
                 
         except Exception as e:
-            print(f"⚠️ Model performance logging error: {e}")
+            logger.info(f"⚠️ Model performance logging error: {e}")
 
 
 class LakehouseMonitor:
@@ -248,7 +252,7 @@ class LakehouseMonitor:
         """Initialize Lakehouse Monitor."""
         self.w = WorkspaceClient()
         self.governance_table = f"{UNITY_CATALOG}.{UNITY_SCHEMA}.governance"
-        print(f"✅ Lakehouse Monitor initialized for {self.governance_table}")
+        logger.info(f"✅ Lakehouse Monitor initialized for {self.governance_table}")
     
     def create_monitoring_profile(self, 
                                  profile_name: str = "superadvisor_monitor",
@@ -265,9 +269,9 @@ class LakehouseMonitor:
             profile_name: Name for the monitoring profile
             baseline_table: Optional baseline table for drift detection
         """
-        print(f"\n{'='*70}")
-        print(f"Setting up Lakehouse Monitoring Profile: {profile_name}")
-        print(f"{'='*70}")
+        logger.info(f"\n{'='*70}")
+        logger.info(f"Setting up Lakehouse Monitoring Profile: {profile_name}")
+        logger.info(f"{'='*70}")
         
         # SQL to create monitoring views
         setup_sql = f"""
@@ -361,10 +365,10 @@ GROUP BY DATE(timestamp), country
 ORDER BY date DESC;
 """
         
-        print("\n📊 Creating monitoring views...")
-        print(f"   - {UNITY_CATALOG}.{UNITY_SCHEMA}.governance_monitoring")
-        print(f"   - {UNITY_CATALOG}.{UNITY_SCHEMA}.governance_monitoring_hourly")
-        print(f"   - {UNITY_CATALOG}.{UNITY_SCHEMA}.classification_monitoring")
+        logger.info("\n📊 Creating monitoring views...")
+        logger.info(f"   - {UNITY_CATALOG}.{UNITY_SCHEMA}.governance_monitoring")
+        logger.info(f"   - {UNITY_CATALOG}.{UNITY_SCHEMA}.governance_monitoring_hourly")
+        logger.info(f"   - {UNITY_CATALOG}.{UNITY_SCHEMA}.classification_monitoring")
         
         return setup_sql
     
@@ -561,37 +565,35 @@ ORDER BY query_count DESC;
         """
         Complete monitoring setup including views, alerts, and dashboards.
         """
-        print(f"\n{'='*70}")
-        print("🔧 LAKEHOUSE MONITORING SETUP")
-        print(f"{'='*70}\n")
+        logger.info(f"\n{'='*70}")
+        logger.info("🔧 LAKEHOUSE MONITORING SETUP")
+        logger.info(f"{'='*70}\n")
         
         # 1. Create monitoring views
         monitoring_sql = self.create_monitoring_profile()
-        print("✅ Monitoring views SQL generated")
-        print("   Run this SQL in Databricks SQL to create views\n")
+        logger.info("✅ Monitoring views SQL generated")
+        logger.info("   Run this SQL in Databricks SQL to create views\n")
         
         # 2. Generate alert queries
         alerts = self.create_alert_queries()
-        print(f"✅ {len(alerts)} alert queries generated:")
+        logger.info(f"✅ {len(alerts)} alert queries generated:")
         for alert_name in alerts.keys():
-            print(f"   - {alert_name}")
-        print()
-        
+            logger.info(f"   - {alert_name}")
+
         # 3. Generate dashboard queries
         dashboards = self.create_dashboard_queries()
-        print(f"✅ {len(dashboards)} dashboard queries generated:")
+        logger.info(f"✅ {len(dashboards)} dashboard queries generated:")
         for dashboard_name in dashboards.keys():
-            print(f"   - {dashboard_name}")
-        print()
+            logger.info(f"   - {dashboard_name}")
         
-        print(f"{'='*70}")
-        print("📊 NEXT STEPS:")
-        print(f"{'='*70}")
-        print("1. Run the monitoring views SQL in Databricks SQL")
-        print("2. Create SQL alerts using the alert queries")
-        print("3. Build dashboards using the dashboard queries")
-        print("4. Set up scheduled jobs to check alerts")
-        print(f"{'='*70}\n")
+        logger.info(f"{'='*70}")
+        logger.info("📊 NEXT STEPS:")
+        logger.info(f"{'='*70}")
+        logger.info("1. Run the monitoring views SQL in Databricks SQL")
+        logger.info("2. Create SQL alerts using the alert queries")
+        logger.info("3. Build dashboards using the dashboard queries")
+        logger.info("4. Set up scheduled jobs to check alerts")
+        logger.info(f"{'='*70}\n")
         
         return {
             "monitoring_sql": monitoring_sql,
@@ -694,13 +696,13 @@ def export_monitoring_setup(output_path: str = "monitoring_setup.sql"):
             f.write(dashboard_sql)
             f.write("\n\n")
     
-    print(f"✅ Monitoring setup exported to {output_path}")
+    logger.info(f"✅ Monitoring setup exported to {output_path}")
 
 
 if __name__ == "__main__":
-    print("=" * 70)
-    print("SuperAdvisor Agent Monitoring Setup")
-    print("=" * 70)
+    logger.info("=" * 70)
+    logger.info("SuperAdvisor Agent Monitoring Setup")
+    logger.info("=" * 70)
     
     # Setup Lakehouse Monitoring
     monitor = LakehouseMonitor()
@@ -709,7 +711,7 @@ if __name__ == "__main__":
     # Export to file
     export_monitoring_setup()
     
-    print("\n✅ Monitoring setup complete!")
-    print("\nRun this file to generate monitoring SQL:")
-    print("  python monitoring.py")
+    logger.info("\n✅ Monitoring setup complete!")
+    logger.info("\nRun this file to generate monitoring SQL:")
+    logger.info("  python monitoring.py")
 

@@ -14,6 +14,9 @@ import json
 import traceback
 from typing import Optional, List, Dict, Any
 from utils.lakehouse import execute_sql_statement, get_audit_logs as db_get_audit_logs, get_cost_summary as db_get_cost_summary
+from shared.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 # ============================================================================
@@ -110,12 +113,12 @@ def log_query_event(
             {total_time_seconds}
         )
         """
-        
+
         execute_sql_statement(insert_sql, SQL_WAREHOUSE_ID)
-        print(f"✅ Logged event (country={country}, cost=${cost:.4f}, verdict={judge_verdict})")
-    
+        logger.info(f"✅ Logged event (country={country}, cost=${cost:.4f}, verdict={judge_verdict})")
+
     except Exception as e:
-        print(f"⚠️ Error logging governance event: {e}")
+        logger.error(f"⚠️ Error logging governance event: {e}")
         traceback.print_exc()
 
 
@@ -185,7 +188,7 @@ def transform_governance_result(row: Dict) -> Dict:
             "time_seconds": float(row.get("total_time_seconds", 0)),
         }
     except Exception as e:
-        print(f"⚠️ transform_governance_result error: {e}")
+        logger.error(f"⚠️ transform_governance_result error: {e}")
         return {}
 
 

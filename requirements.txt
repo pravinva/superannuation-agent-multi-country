@@ -16,3 +16,14 @@ plotly>=5.14.0
 
 # Type Checking
 pydantic>=2.0.0
+
+# Configuration Management (Phase 1)
+PyYAML>=6.0.0
+
+# Template Engine (Phase 2)
+Jinja2>=3.1.0
+
+# Testing Framework
+pytest>=7.4.0
+pytest-cov>=4.1.0
+pytest-mock>=3.11.0

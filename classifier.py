@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+from shared.logging_config import get_logger
+
+logger = get_logger(__name__)
+
 """
 Intelligent Query Classifier - Embedding-Based Cascade
 Replaces hardcoded keywords + ai_classify with semantic understanding
@@ -69,10 +73,10 @@ class EmbeddingCascadeClassifier:
             'total_latency_ms': 0.0
         }
         
-        print("✅ EmbeddingCascadeClassifier initialized")
-        print(f"   Embedding Model: {self.embedding_model}")
-        print(f"   LLM Fallback: {self.llm_endpoint}")
-        print(f"   Cache Enabled: {self.enable_cache}")
+        logger.info("✅ EmbeddingCascadeClassifier initialized")
+        logger.info(f"   Embedding Model: {self.embedding_model}")
+        logger.info(f"   LLM Fallback: {self.llm_endpoint}")
+        logger.info(f"   Cache Enabled: {self.enable_cache}")
     
     def classify(self, user_query: str) -> Dict:
         """
@@ -133,7 +137,7 @@ class EmbeddingCascadeClassifier:
                 return result
         except Exception as e:
             # ✅ Embedding failed - log warning but continue to Stage 3
-            print(f"⚠️ Stage 2 embedding error: {e}")
+            logger.info(f"⚠️ Stage 2 embedding error: {e}")
             # Continue to Stage 3 LLM fallback
         
         # STAGE 3: LLM fallback (borderline cases OR if Stage 2 failed)
@@ -180,6 +184,13 @@ class EmbeddingCascadeClassifier:
             r'\b(centrelink|age\s+pension)\b',  # Australia benefits
             r'\bsocial\s+security\b',  # US benefits
             r'\bstate\s+pension\b',  # UK benefits
+            # ✅ NEW: Generic balance/account queries (retirement advisor context)
+            # These are retirement-related when asked to a superannuation advisor
+            r'\b(my|current|account|total)\s+(balance|amount|value|worth)\b',
+            r'\bbalance\??$',  # "What's my balance?"
+            r'\bhow\s+much\s+(do\s+i\s+have|have\s+i|saved|is\s+(in\s+)?(my|the)\s+(account|fund))',
+            r'\b(check|show|view|see)\s+(my\s+)?(balance|account|funds?)',
+            r'\bwhat\'?s?\s+(my|the|in\s+my)\s+(balance|account)',
         ]
         
         # Clear off-topic patterns
@@ -273,7 +284,7 @@ class EmbeddingCascadeClassifier:
             return None
             
         except Exception as e:
-            print(f"⚠️ Stage 2 embedding error: {e}")
+            logger.info(f"⚠️ Stage 2 embedding error: {e}")
             return None  # Fall back to stage 3
     
     def _stage3_llm_classification(self, query: str) -> Dict:
@@ -283,24 +294,29 @@ class EmbeddingCascadeClassifier:
         try:
             classification_prompt = f"""You are a retirement advisory classifier.
 
-Determine if this query is about retirement/pensions/superannuation OR off-topic.
+CONTEXT: This query is being asked to a Superannuation/Retirement Advisor chatbot.
+Generic financial questions asked in this context are RETIREMENT-RELATED.
 
 USER QUERY: "{query}"
 
-RETIREMENT TOPICS:
+RETIREMENT TOPICS (classify as "retirement_query"):
 - Retirement accounts: 401k, IRA, Superannuation, EPF, NPS, SIPP, pension
+- Balance inquiries: "What's my balance?", "How much do I have?", "Show my account"
 - Withdrawals, early access, hardship
 - Tax on retirement withdrawals
 - Benefits, projections, contributions
 - Retirement planning advice
+- Account management: contributions, transfers, beneficiaries
 
-OFF-TOPIC EXAMPLES:
-- General finance (loans, mortgages, credit cards, savings accounts)
-- Investments (stocks, crypto, real estate - unless retirement-specific)
-- General questions (weather, cooking, sports, entertainment)
-- Technical support (login, password reset)
+OFF-TOPIC EXAMPLES (classify as "off_topic"):
+- NON-retirement finance: loans, mortgages, credit cards, general savings accounts
+- Investments: stocks, crypto, real estate (unless explicitly retirement-focused)
+- General questions: weather, cooking, sports, entertainment
+- Technical support: login issues, password reset
+- Social events: "retirement party", "retirement gift"
 
-IMPORTANT: "Retirement party" or "retirement gift" = OFF-TOPIC (social events, not financial)
+KEY RULE: Generic account/balance questions asked to a retirement advisor ARE retirement-related.
+Examples: "my balance", "how much", "my account" → retirement_query
 
 Respond in JSON:
 {{
@@ -357,7 +373,7 @@ Respond in JSON:
             }
             
         except Exception as e:
-            print(f"❌ Stage 3 LLM error: {e}")
+            logger.info(f"❌ Stage 3 LLM error: {e}")
             # Default to on-topic to avoid false rejections
             return {
                 'is_on_topic': True,
@@ -428,7 +444,7 @@ Respond in JSON:
         """
         Load or compute embeddings for archetype queries.
         """
-        print("🔄 Loading archetype embeddings...")
+        logger.info("🔄 Loading archetype embeddings...")
         
         # Get archetype queries from prompts registry
         if self.prompts_registry:
@@ -461,7 +477,7 @@ Respond in JSON:
             self._get_embedding(arch) for arch in off_topic_archetypes
         ]
         
-        print(f"✅ Loaded {len(self._retirement_embeddings)} retirement + {len(self._off_topic_embeddings)} off-topic archetypes")
+        logger.info(f"✅ Loaded {len(self._retirement_embeddings)} retirement + {len(self._off_topic_embeddings)} off-topic archetypes")
     
     def _cosine_similarity(self, vec1: List[float], vec2: List[float]) -> float:
         """
@@ -509,23 +525,17 @@ Respond in JSON:
         """Print classification metrics in a readable format."""
         metrics = self.get_metrics()
         
-        print("\n" + "=" * 70)
-        print("📊 CLASSIFIER METRICS")
-        print("=" * 70)
-        print(f"Total Queries: {metrics['total_queries']}")
-        print(f"Cache Hits: {metrics['cache_hits']} ({metrics.get('cache_hit_rate', 0):.1f}%)")
-        print(f"\nStage Distribution:")
-        print(f"  Stage 1 (Regex):     {metrics['stage1_hits']} ({metrics.get('stage1_percentage', 0):.1f}%)")
-        print(f"  Stage 2 (Embedding): {metrics['stage2_hits']} ({metrics.get('stage2_percentage', 0):.1f}%)")
-        print(f"  Stage 3 (LLM):       {metrics['stage3_hits']} ({metrics.get('stage3_percentage', 0):.1f}%)")
-        print(f"\nPerformance:")
-        print(f"  Avg Latency: {metrics.get('avg_latency_ms', 0):.1f}ms")
-        print(f"  Avg Cost:    ${metrics.get('avg_cost_usd', 0):.6f}")
-        print(f"  Total Cost:  ${metrics['total_cost']:.6f}")
-        print("=" * 70 + "\n")
-
-
-def printf(msg):
-    """Print helper."""
-    print(msg)
-
+        logger.info("\n" + "=" * 70)
+        logger.info("📊 CLASSIFIER METRICS")
+        logger.info("=" * 70)
+        logger.info(f"Total Queries: {metrics['total_queries']}")
+        logger.info(f"Cache Hits: {metrics['cache_hits']} ({metrics.get('cache_hit_rate', 0):.1f}%)")
+        logger.info(f"\nStage Distribution:")
+        logger.info(f"  Stage 1 (Regex):     {metrics['stage1_hits']} ({metrics.get('stage1_percentage', 0):.1f}%)")
+        logger.info(f"  Stage 2 (Embedding): {metrics['stage2_hits']} ({metrics.get('stage2_percentage', 0):.1f}%)")
+        logger.info(f"  Stage 3 (LLM):       {metrics['stage3_hits']} ({metrics.get('stage3_percentage', 0):.1f}%)")
+        logger.info(f"\nPerformance:")
+        logger.info(f"  Avg Latency: {metrics.get('avg_latency_ms', 0):.1f}ms")
+        logger.info(f"  Avg Cost:    ${metrics.get('avg_cost_usd', 0):.6f}")
+        logger.info(f"  Total Cost:  ${metrics['total_cost']:.6f}")
+        logger.info("=" * 70 + "\n")

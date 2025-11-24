@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+from shared.logging_config import get_logger
+
+logger = get_logger(__name__)
+
 """
 Prompts Registry with MLflow Integration
 Centralized prompt management with versioning and tracking
@@ -34,9 +38,9 @@ class PromptsRegistry:
         if self.enable_mlflow:
             try:
                 mlflow.set_experiment(self.experiment_name)
-                print(f"✅ MLflow prompts registry initialized: {self.experiment_name}")
+                logger.info(f"✅ MLflow prompts registry initialized: {self.experiment_name}")
             except Exception as e:
-                print(f"⚠️ MLflow initialization warning: {e}")
+                logger.info(f"⚠️ MLflow initialization warning: {e}")
                 self.enable_mlflow = False
     
     def get_system_prompt(self, country: str) -> str:
@@ -510,7 +514,7 @@ ORDER BY citation_id"""
             run_name: Optional name for the MLflow run
         """
         if not self.enable_mlflow:
-            print("⚠️ MLflow disabled, skipping prompt registration")
+            logger.info("⚠️ MLflow disabled, skipping prompt registration")
             return
         
         try:
@@ -555,14 +559,14 @@ ORDER BY citation_id"""
                 mlflow.log_metric("retirement_keywords_count", len(self.get_retirement_keywords()))
                 
                 self.last_registered = run.info.run_id
-                print(f"✅ Prompts registered with MLflow - Run ID: {run.info.run_id}")
-                print(f"   Version: {self.prompt_version}")
-                print(f"   Total prompts: {len(prompts_dict)}")
+                logger.info(f"✅ Prompts registered with MLflow - Run ID: {run.info.run_id}")
+                logger.info(f"   Version: {self.prompt_version}")
+                logger.info(f"   Total prompts: {len(prompts_dict)}")
                 
                 return run.info.run_id
                 
         except Exception as e:
-            print(f"❌ Error registering prompts with MLflow: {e}")
+            logger.info(f"❌ Error registering prompts with MLflow: {e}")
             import traceback
             traceback.print_exc()
             return None
@@ -618,24 +622,24 @@ def register_prompts_now(experiment_name: Optional[str] = None,
 
 if __name__ == "__main__":
     # Test registration when run directly
-    print("=" * 70)
-    print("Prompts Registry - MLflow Registration")
-    print("=" * 70)
+    logger.info("=" * 70)
+    logger.info("Prompts Registry - MLflow Registration")
+    logger.info("=" * 70)
     
     registry = PromptsRegistry(enable_mlflow=True)
     
-    print("\n📋 Prompt Metadata:")
+    logger.info("\n📋 Prompt Metadata:")
     metadata = registry.get_prompt_metadata()
     for key, value in metadata.items():
-        print(f"  {key}: {value}")
+        logger.info(f"  {key}: {value}")
     
-    print("\n🚀 Registering prompts with MLflow...")
+    logger.info("\n🚀 Registering prompts with MLflow...")
     run_id = registry.register_prompts_with_mlflow()
     
     if run_id:
-        print(f"\n✅ Success! Run ID: {run_id}")
+        logger.info(f"\n✅ Success! Run ID: {run_id}")
     else:
-        print("\n⚠️ Registration completed with warnings")
+        logger.info("\n⚠️ Registration completed with warnings")
     
-    print("\n" + "=" * 70)
+    logger.info("\n" + "=" * 70)
 

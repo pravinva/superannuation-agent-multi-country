@@ -1,0 +1,54 @@
+# Superannuation Agent Configuration
+# Environment variables can override any setting using: AGENT_{SECTION}_{KEY}
+# Example: AGENT_LLM_TEMPERATURE=0.5
+
+# LLM Configuration
+llm:
+  endpoint: "databricks-claude-sonnet-4"
+  temperature: 0.2
+  max_tokens: 4000
+  timeout: 120
+  max_retries: 3
+
+# Validation LLM Configuration
+validation_llm:
+  endpoint: "databricks-claude-sonnet-4"
+  temperature: 0.0
+  max_tokens: 2000
+  confidence_threshold: 0.70
+
+# Country-specific settings
+countries:
+  - code: "AU"
+    name: "Australia"
+    enabled: true
+  - code: "US"
+    name: "United States"
+    enabled: true
+  - code: "UK"
+    name: "United Kingdom"
+    enabled: true
+  - code: "NZ"
+    name: "New Zealand"
+    enabled: true
+
+# Agent Behavior
+agent:
+  max_iterations: 10
+  enable_reflection: true
+  enable_validation: true
+  verbose_logging: false
+
+# UI Configuration
+ui:
+  theme: "light"
+  show_debug_info: false
+  page_title: "Superannuation Agent"
+  page_icon: "💰"
+
+# Performance Settings
+performance:
+  cache_enabled: true
+  cache_ttl: 3600
+  batch_size: 10
+  parallel_execution: true
