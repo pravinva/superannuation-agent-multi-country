@@ -154,7 +154,6 @@ class AuditLogger:
 
 
 def _async_audit_logging(
-    orchestrator,
     audit_logger,
     obs,
     session_id,
@@ -172,52 +171,51 @@ def _async_audit_logging(
     """
     Async function to handle audit logging in background.
     Runs in a separate thread to avoid blocking response.
+    Note: Phase tracking happens in main thread, not here.
     """
     try:
-        with orchestrator.track_phase("Audit Logging", "phase_8_logging", print_banner=False):
-            logger.info("📍 PHASE 8: Audit Logging (background)")
-            logger.info(f"🔄 Logging to MLflow and governance table...")
+        logger.info("📍 PHASE 8: Audit Logging (running in background)")
+        logger.info(f"🔄 Logging to MLflow and governance table...")
 
-            # Log to governance table
+        # Log to governance table
+        try:
+            audit_logger.log_to_governance_table(
+                session_id=session_id,
+                user_id=user_id,
+                country=country,
+                query_string=query_string,
+                answer=answer,
+                judge_verdict=judge_verdict,
+                tools_called=tools_called,
+                cost=total_cost,
+                citations=citations,
+                elapsed=elapsed,
+                error_info=None,
+                classification_method=classification_method
+            )
+            logger.info(f"✅ Governance table logged: {session_id}")
+        except Exception as gov_error:
+            logger.error(f"⚠️ Governance logging failed: {gov_error}", exc_info=True)
+
+        # End observability run
+        if obs:
             try:
-                audit_logger.log_to_governance_table(
-                    session_id=session_id,
-                    user_id=user_id,
-                    country=country,
-                    query_string=query_string,
-                    answer=answer,
-                    judge_verdict=judge_verdict,
-                    tools_called=tools_called,
-                    cost=total_cost,
-                    citations=citations,
-                    elapsed=elapsed,
-                    error_info=None,
-                    classification_method=classification_method
+                obs.end_agent_run(
+                    response=answer or "",
+                    success=True,
+                    error=None
                 )
-                logger.info(f"✅ Governance table logged: {session_id}")
-            except Exception as gov_error:
-                logger.error(f"⚠️ Governance logging failed: {gov_error}", exc_info=True)
-
-            # End observability run
-            if obs:
+            except Exception as obs_error:
+                logger.info(f"⚠️ Error ending observability run: {obs_error}")
+                # Force end any active MLflow run
                 try:
-                    obs.end_agent_run(
-                        response=answer or "",
-                        success=True,
-                        error=None
-                    )
-                except Exception as obs_error:
-                    logger.info(f"⚠️ Error ending observability run: {obs_error}")
-                    # Force end any active MLflow run
-                    try:
-                        import mlflow
-                        if mlflow.active_run():
-                            mlflow.end_run()
-                    except:
-                        pass
+                    import mlflow
+                    if mlflow.active_run():
+                        mlflow.end_run()
+                except:
+                    pass
 
-            phase8_duration = orchestrator.get_last_phase_duration()
-            logger.info(f"✅ Phase 8 (Audit Logging) completed in {phase8_duration:.2f}s (background)")
+        logger.info(f"✅ Phase 8 (Audit Logging) completed in background")
 
     except Exception as e:
         logger.error(f"⚠️ Background audit logging error: {e}", exc_info=True)
@@ -470,11 +468,13 @@ def agent_query(
         classification_info = result_dict.get('classification', {})
         classification_method = classification_info.get('method', 'unknown')
 
+        # Mark Phase 8 as running
+        mark_phase_running('phase_8_logging')
+
         # Start audit logging in background thread
         audit_thread = threading.Thread(
             target=_async_audit_logging,
             args=(
-                orchestrator,
                 audit_logger,
                 obs,
                 session_id,
@@ -492,7 +492,10 @@ def agent_query(
             daemon=True  # Thread will not block program exit
         )
         audit_thread.start()
-        logger.info("🚀 Audit logging started in background thread")
+
+        # Mark Phase 8 as complete immediately (logging continues in background)
+        mark_phase_complete('phase_8_logging', duration=0.0)
+        logger.info("🚀 Audit logging triggered (running in background)")
     
     except Exception as e:
         error_info = traceback.format_exc()
