@@ -73,7 +73,7 @@ def safe_dataframe_check(df):
 # ============================================================================ #
 
 if os.path.exists("logo.png"):
-    st.sidebar.image("logo.png", use_column_width=True)
+    st.sidebar.image("logo.png", use_container_width=True)
 st.sidebar.title(BRANDCONFIG["brand_name"])
 st.sidebar.caption(BRANDCONFIG.get("subtitle", "Enterprise-Grade Agentic AI on Databricks"))
 st.sidebar.markdown("---")
