@@ -171,6 +171,13 @@ class UnifiedToolExecutor:
                 return profile.get("preservation_age", default)
             elif key == "ni_qualifying_years":
                 return profile.get("ni_qualifying_years", default)
+            elif key == "balance":
+                # Special case: balance -> super_balance lookup
+                # Handle {balance: super_balance} mapping
+                if isinstance(default, str) and default == "super_balance":
+                    return profile.get("super_balance", 0)
+                else:
+                    return default
             else:
                 return profile.get(key, default)
 
