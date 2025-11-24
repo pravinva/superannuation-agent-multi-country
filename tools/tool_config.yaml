@@ -12,14 +12,14 @@ countries:
         query_template: |
           SELECT super_advisory_demo.pension_calculators.au_calculate_tax(
               '{member_id}', {age}, {preservation_age},
-              {balance}, {withdrawal_amount}
+              {super_balance}, {withdrawal_amount}
           ) as result
         params:
           - member_id
           - age
           - preservation_age: 60  # default
-          - balance: super_balance
-          - withdrawal_amount
+          - super_balance
+          - withdrawal_amount: 0  # default for non-withdrawal queries
 
       benefit:
         name: "Centrelink Calculator"
@@ -28,16 +28,16 @@ countries:
         citations: ["AU-PENSION-001"]
         query_template: |
           SELECT super_advisory_demo.pension_calculators.au_check_pension_impact(
-              '{member_id}', {age}, {balance},
-              {other_assets}, '{marital_status}',
-              'Homeowner'
+              '{member_id}', {age}, '{marital_status}',
+              {balance}, {other_assets}, {proposed_withdrawal}
           ) as result
         params:
           - member_id
           - age
+          - marital_status: "Single"  # default
           - balance: super_balance
           - other_assets: 0  # default
-          - marital_status: "Single"  # default
+          - proposed_withdrawal: 0  # default (no withdrawal for balance inquiry)
 
       projection:
         name: "Superannuation Projection"
