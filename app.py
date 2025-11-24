@@ -267,16 +267,14 @@ if page == "Advisory":
             st.warning("Please select a member profile first.")
         else:
             # ✅ CRITICAL: Reset show_processing_logs to False for new query
-            # Also clear the widget state to ensure checkbox resets
+            # Update session state value but DON'T delete widget key (causes widget index mismatch)
             st.session_state.show_processing_logs = False
-            if 'show_logs_checkbox' in st.session_state:
-                del st.session_state['show_logs_checkbox']  # Clear widget state
-            
+
             # ✅ CRITICAL: Initialize phases FIRST (will trigger rerun)
             initialize_progress_tracker()
             st.session_state.query_executing = True
             st.session_state.current_query = question  # Store query for execution block
-            
+
             # ✅ CRITICAL: Force immediate rerun to show progress
             st.rerun()
     
