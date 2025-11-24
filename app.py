@@ -3,6 +3,7 @@ import uuid
 import os
 import pandas as pd
 from config import BRANDCONFIG
+from debug_widgets import reset_widget_tracking, display_widget_debug_info, log_rerun
 from ui_components import (
     render_logo,
     render_member_card,
@@ -104,6 +105,9 @@ if "query_executing" not in st.session_state:
 # ============================================================================ #
 
 if page == "Advisory":
+    # Reset widget tracking at start of page render
+    reset_widget_tracking()
+
     render_logo()
     
     st.subheader("🌍 Select Country")
@@ -166,6 +170,7 @@ if page == "Advisory":
                 
                 if st.button(button_label, key=f"btn_{member_id}_{country_code}", use_container_width=True, type=button_type):
                     st.session_state.selected_member = member_id
+                    log_rerun("member_selection", f"Selected member: {member_id}")
                     st.rerun()
 
                 render_member_card(member, is_selected, country_display)
@@ -278,6 +283,7 @@ if page == "Advisory":
             st.session_state.current_query = question  # Store query for execution block
 
             # ✅ CRITICAL: Force immediate rerun to show progress
+            log_rerun("get_recommendation", f"Starting query execution")
             st.rerun()
     
     # ✅ CRITICAL: Handle query execution (if query_executing flag is set)
@@ -462,6 +468,9 @@ if page == "Advisory":
                     st.caption(f"[{i}] {cite.get('authority', 'Unknown')}: {cite.get('regulation', '')}")
                 else:
                     st.caption(f"[{i}] {cite}")
+
+    # Display debug widget information in sidebar (only on Advisory page)
+    display_widget_debug_info()
 
 # ============================================================================ #
 # GOVERNANCE PAGE

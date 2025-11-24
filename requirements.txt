@@ -2,7 +2,8 @@
 # Production-ready multi-country retirement advisory system
 
 # Core Framework
-streamlit>=1.37.0
+# Pin to 1.51.0 - older versions (1.37-1.40) have "Bad setIn index" widget state bugs
+streamlit==1.51.0
 
 # Databricks & MLflow
 mlflow>=2.8.0
