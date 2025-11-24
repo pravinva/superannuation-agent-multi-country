@@ -142,7 +142,9 @@ if page == "Advisory":
         members_df = get_members_by_country(country_code)
         if safe_dataframe_check(members_df):
             if len(members_df) > 4:
-                members_df = members_df.sample(n=4, random_state=None)
+                # ✅ CRITICAL: Use fixed random_state to ensure same members are always selected
+                # random_state=None would pick different members on each rerun, causing widget key mismatches
+                members_df = members_df.sample(n=4, random_state=42)
             st.session_state.members_list = members_df.to_dict("records")
         else:
             st.session_state.members_list = []
@@ -205,7 +207,8 @@ if page == "Advisory":
     cols = st.columns(3)
     for i, q in enumerate(sample_questions.get(country_display, [])):
         with cols[i]:
-            if st.button(q, key=f"sample_q_{i}", use_container_width=True):
+            # ✅ Include country_code in key to avoid conflicts when switching countries
+            if st.button(q, key=f"sample_q_{country_code}_{i}", use_container_width=True):
                 st.session_state.query_input = q
     
     question = st.text_input("Your question:", key="query_input")
