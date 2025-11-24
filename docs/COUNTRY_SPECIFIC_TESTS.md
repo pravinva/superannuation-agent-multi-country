@@ -416,5 +416,5 @@ def test_nps_vs_epf_comparison(agent, test_timer, verify_test_members_exist):
 
 ---
 
-**Created by:** Claude Code
+Created by: Development Team
 **Last Updated:** 2024-11-24

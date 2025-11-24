@@ -800,26 +800,143 @@ Understanding how the components interact is crucial for maintaining and extendi
 
 ### Adding a New Country
 
-1. **Add country configuration** (`country_config.py`):
-   ```python
-   CountryConfig(
-       code="CA",
-       name="Canada",
-       currency="CAD",
-       retirement_account_term="RRSP",
-       regulatory_context="...",
-       available_tools=["tax", "benefit", "projection"]
-   )
-   ```
+The system is designed to support new countries with minimal configuration changes. Here's a complete example of adding Canada as a fifth country:
 
-2. **Create SQL functions** (Unity Catalog):
-   ```sql
-   CREATE FUNCTION CA_calculate_tax(...) RETURNS STRUCT<...>;
-   ```
+#### Step 1: Update Configuration (config/config.yaml)
 
-3. **Test it!**
+Add the new country to the countries list:
 
-**That's it!** No code changes needed in agent logic.
+```yaml
+countries:
+  - code: "AU"
+    name: "Australia"
+    enabled: true
+  - code: "US"
+    name: "United States"
+    enabled: true
+  - code: "UK"
+    name: "United Kingdom"
+    enabled: true
+  - code: "IN"
+    name: "India"
+    enabled: true
+  - code: "CA"
+    name: "Canada"
+    enabled: true
+```
+
+#### Step 2: Add Country Configuration (country_config.py)
+
+Define the country-specific settings:
+
+```python
+CountryConfig(
+    code="CA",
+    name="Canada",
+    currency="CAD",
+    currency_symbol="$",
+    retirement_account_term="RRSP",
+    authority="CRA",
+    regulatory_context="""
+        Follow Canadian Revenue Agency (CRA) regulations for RRSPs.
+        Key rules:
+        - Contribution limit: 18% of previous year's income (max $31,560 for 2024)
+        - Withdrawal taxed as income
+        - First Home Buyers' Plan: withdraw up to $35,000
+        - Age 71: must convert to RRIF
+    """,
+    available_tools=["rrsp_balance", "tax_calculation", "withdrawal_eligibility"]
+)
+```
+
+#### Step 3: Create SQL Functions (Unity Catalog)
+
+Create country-specific calculation functions:
+
+```sql
+-- RRSP Balance Query
+CREATE OR REPLACE FUNCTION super_advisory_demo.pension_calculators.CA_get_rrsp_balance(
+    member_id STRING
+)
+RETURNS STRUCT<
+    balance DOUBLE,
+    contribution_room DOUBLE,
+    currency STRING
+>
+LANGUAGE SQL
+RETURN SELECT
+    balance,
+    contribution_room,
+    'CAD' as currency
+FROM super_advisory_demo.member_data.member_profiles
+WHERE user_id = member_id AND country = 'CA';
+
+-- Tax Calculation
+CREATE OR REPLACE FUNCTION super_advisory_demo.pension_calculators.CA_calculate_tax(
+    withdrawal_amount DOUBLE,
+    member_id STRING
+)
+RETURNS STRUCT<
+    tax_amount DOUBLE,
+    net_amount DOUBLE,
+    tax_rate DOUBLE
+>
+LANGUAGE SQL
+...
+```
+
+#### Step 4: Add Test Member Data
+
+Insert test member profile:
+
+```sql
+INSERT INTO super_advisory_demo.member_data.member_profiles
+(user_id, name, age, country, super_balance, contribution_rate, employer_match)
+VALUES ('CA001', 'John Smith', 45, 'CA', 125000, 0.10, 0.05);
+```
+
+#### Step 5: Add UI Theme (Optional)
+
+Update `ui/theme_config.py` for country-specific UI styling:
+
+```python
+COUNTRY_COLORS = {
+    "CA": {
+        "primary": "#FF0000",      # Red from Canadian flag
+        "secondary": "#FFFFFF",     # White from Canadian flag
+        "currency": "$",
+        "flag": "CA"
+    },
+    ...
+}
+```
+
+#### Step 6: Test the Integration
+
+```python
+# Test query for Canadian member
+from agent_processor import agent_query
+
+result = agent_query(
+    member_id="CA001",
+    user_query="What is my RRSP contribution room?",
+    withdrawal_amount=None
+)
+```
+
+**That's it!** The system will automatically:
+- Route queries to Canadian-specific functions
+- Apply CRA regulatory context
+- Format currency as CAD
+- Use Canadian terminology (RRSP, CRA)
+- Track Canada-specific metrics
+
+**Key Benefits:**
+- Zero code changes to agent logic
+- Configuration-driven approach
+- Full isolation between countries
+- Easy to test and validate
+- Maintainable and scalable
 
 ---
 

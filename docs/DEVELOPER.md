@@ -299,7 +299,7 @@ Usage:
     >>> result.to_dict()
     {...}
 
-Author: Refactoring Team
+Author: Development Team
 Date: 2024-11-24
 """
 ```

@@ -403,6 +403,6 @@ PASSED [25%]
 
 ---
 
-**Created by:** Claude Code
+Created by: Development Team
 **Last Updated:** 2024-11-24
 **Test Suite Version:** 1.0
