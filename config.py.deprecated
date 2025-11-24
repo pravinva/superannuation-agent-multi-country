@@ -38,6 +38,9 @@ JUDGE_LLM_TEMPERATURE = 0.1
 JUDGE_LLM_MAX_TOKENS = 300
 LLM_JUDGE_CONFIDENCE_THRESHOLD = 0.70
 
+# Classifier LLM for off-topic detection Stage 3 fallback (OSS GPT 120B - cost optimized)
+CLASSIFIER_LLM_ENDPOINT = "databricks-gpt-oss-120b"
+
 # ============================================================================
 # DATABRICKS GENAI PRICING (per 1M tokens) - Official rates
 # ============================================================================
@@ -55,6 +58,10 @@ LLM_PRICING = {
     "claude-haiku-4": {
         "input_tokens": 0.25,   # $0.25 per 1M input tokens
         "output_tokens": 1.25   # $1.25 per 1M output tokens
+    },
+    "gpt-oss-120b": {
+        "input_tokens": 0.15,   # $0.15 per 1M input tokens (OSS pricing)
+        "output_tokens": 0.15   # $0.15 per 1M output tokens (OSS pricing)
     }
 }
 
@@ -63,8 +70,8 @@ LLM_PRICING = {
 # ============================================================================
 
 # Update with your Databricks username/email
-MLFLOW_PROD_EXPERIMENT_PATH = "/Users/<your-email>/prodretirement-advisory"
-MLFLOW_OFFLINE_EVAL_PATH = "/Users/<your-email>/retirement-eval"
+MLFLOW_PROD_EXPERIMENT_PATH = "/Users/pravin.varma@databricks.com/prodretirement-advisory"
+MLFLOW_OFFLINE_EVAL_PATH = "/Users/pravin.varma@databricks.com/retirement-eval"
 
 # ============================================================================
 # Architecture and infrastructure details
@@ -87,7 +94,7 @@ MEMBER_PROFILES_TABLE = "member_profiles"
 # SQL Warehouse ID - Update with your warehouse ID or configure in UI
 # Find your warehouse ID: SQL → SQL Warehouses → Select warehouse → Copy ID
 # Can also be configured via UI: Governance → Configuration tab
-SQL_WAREHOUSE_ID = "Your SQL Warehouse ID here"
+SQL_WAREHOUSE_ID = "4b9b953939869799"
 
 # ============================================================================
 # Helper Functions
@@ -112,11 +119,16 @@ def calculate_llm_cost(input_tokens, output_tokens, model_type):
     Args:
         input_tokens: Number of input tokens
         output_tokens: Number of output tokens  
-        model_type: "claude-opus-4-1", "claude-sonnet-4", or "claude-haiku-4"
+        model_type: Full endpoint name like "databricks-claude-opus-4-1" or "databricks-gpt-oss-120b"
     
     Returns:
         Total cost in USD
     """
+    # Strip "databricks-" prefix if present
+    if model_type.startswith("databricks-"):
+        model_type = model_type.replace("databricks-", "")
+    
+    # Check if model type exists in pricing
     if model_type not in LLM_PRICING:
         model_type = "claude-sonnet-4"  # fallback
     

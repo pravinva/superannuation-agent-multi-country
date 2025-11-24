@@ -1,0 +1,100 @@
+: The ideal length for a blog post is around 1500 words. If your post exceeds 2000-3000 words, it's advisable to split it into two separate posts and create cross-links between them. This will simplify the editing and publishing process on Home | Databricks .
+
+Main guidelines for your assets
+1. Actively maintained
+Any public-facing assets that are not marked as deprecated or archived are assumed to work by our customers. Therefore, with Databricks' feature and platform velocity, if a repository has not been updated in more than 6 months, we will automatically archive the repository publicly. (no code will be lost. However, there will be a mark on the repository denoting it as out of date)
+
+Any active content should run by default on the latest DBR version and on Serverless (unless explicit exception).
+Have a demo that still works and that doesn’t need updates? Just update the README.md file and write in the PR that you have tested it and that it works. 
+
+2. Showcase the latest Databricks Functionality
+You must focus on keeping up to date with the latest Databricks Features (UC, Serverless etc). 
+If a content is relying on an archaic system or an external technology that now exists on our platform, we’ll archive the repository
+For instance, using openAI API instead of our internal model serving endpoint, or not running on UC
+
+3. Driving customer adoption and actual usage (Dashboard coming soon)
+If a demo does not have X unique viewers in 6 months, and Y unique workspace imports to Databricks in 6 months, we will archive the asset. We need to ensure that assets are actually being used. If not, the risk of hosting a public-facing asset from a security standpoint is greater than the apparent outcome.
+
+4. Sell the product
+Your content should answer a business requirement (ex: solve a challenge for many customers). 
+You should always write your content from a sales perspective. We are building assets that should encourage adoption and drive DBUs!
+Explain why this is unique to Databricks, what are the benefits for your customers (in the README)
+
+Storytelling & simplicity
+1. Cleanliness
+Your content needs to be easy to use and easy to understand. These assets are meant to make complex problems super simple for our customers to address on Databricks. So, any solutions that are over-complex will be archived or moved to Databricks EMU (internal to the field). 
+
+Your README should describe in detail what this content is about, at a business and functional level 
+
+Less is better. Don’t ship advanced transformation/steps if they don’t showcase specific capabilities
+
+2. Tell a story 
+Always follow an industry line (even for a product-oriented demo)
+
+Start with the story: what do you want to showcase to your persona, and build from there. Do not build for the tech first without having a story.
+
+In your notebooks or other assets, always tell a story (I’m am X, and I want to do Y. This is my challenge. With Databricks, I’m able to save $$) 
+
+Don’t commit purely technical code. It should always be linked to a final customer use-case.
+
+Note on Industry content / solution accelerators 
+
+These assets must focus on one industry / subvertical, or potentially multiple (TODO: add link to vertical & use-case deck). They should use industry-specific wording, messaging, and architecture.
+
+Assets should now be Application-first. Start with the final business use-case and the app, and build from there
+
+Code, security & legal best practices for PR review
+Overall, use your best judgment and only publish high standards content. Keep in mind that you represent Databricks through your code/assets, make sure you follow our brand guidelines.
+
+Peer review / PR management
+All content updates must undergo peer review (enforced at the repo level). An L7+ must be part of the initial review, and best judgment must be applied to subsequent code changes based on their size and potential impact.  
+
+The repository will be set up according to best practices. No changes are allowed on these parameters at any moment (branch protection, peer review enforced etc).
+
+Only Bricksters are allowed to commit. We cannot accept external contributors as-is.
+
+Databricks license should be used for all projects. 
+
+Dataset
+No external dataset should be created
+
+Small dataset can be crafted and saved in the repository if they follow these requirements:
+
+The data generation code should be available, and using open licenses
+
+A clear NOTICE file must be added detailing how the data was generated
+
+For GenAI dataset, use DBRX 
+
+Check for any new library. They should be listed in the README file with their license. License should only be Apache, BSD, MIT, or DB License only 
+
+Don’t ship sensitive information
+
+All code must be coming from Databricks FE, never share customer-related code or internal code in public repositories
+
+Code Best Practice
+Use the latest Databricks packages and functions. 
+
+The asset must support Serverless and run on UC.
+
+Keep your code clean and well-documented. Use AI to refactor and clean your code before releases
+
+We encourage CI/CD and unit-tests. You must have an easy way to deploy and test your code to ensure it’s still running across different DBR version
+
+Your README must include steps to use and run the asset
+
+You must provide a self-sufficient asset, that can be easily run as-is, by itself, in a repeatable manner. This is key for adoption. 
+
+Note on Shared Repositories
+
+Share repositories (ex: databricks-blog post) need to follow these guidances:
+
+The repositories can have several owners with WRITE permission. 
+
+PR review on shared repositories must follow best practices as any other content (see above). All restrictions/guidance apply.
+
+To get WRITE permission (to become reviewer or manage PR in your folder), you must open an FEINFRA Jira request
+
+Each new folder must have an entry in the CODEOWNER, each folder must have at least 2 owners added
+
+Each folder must have a README describing the content (with a link to the blogpost if that’s a blogpost ass

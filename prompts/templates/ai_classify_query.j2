@@ -1,0 +1,12 @@
+SELECT ai_classify(
+    '{{ user_query_escaped }}',
+    ARRAY(
+        'retirement_planning', 'superannuation_withdrawal', 'pension_benefits',
+        'contribution_rules', 'tax_questions', 'early_access', 'early_withdrawal',
+        'hardship_withdrawal', 'account_access',
+        '401k', '401(k)', 'IRA', 'Roth', 'TSP',
+        'EPF', 'PF', 'VPF', 'EPS', 'NPS', 'PPF',
+        'SIPP', 'LGPS', 'LISA',
+        'off_topic'
+    )
+) AS topic_classification

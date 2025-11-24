@@ -1,0 +1,186 @@
+# Country-Specific Tool Configuration
+# Maps tool_id -> UC function metadata for each country
+
+countries:
+  AU:
+    tools:
+      tax:
+        name: "ATO Tax Calculator"
+        uc_function: "au_calculate_tax"
+        authority: "Australian Taxation Office"
+        citations: ["AU-TAX-001"]
+        query_template: |
+          SELECT super_advisory_demo.pension_calculators.au_calculate_tax(
+              '{member_id}', {age}, {preservation_age},
+              {super_balance}, {withdrawal_amount}
+          ) as result
+        params:
+          - member_id
+          - age
+          - preservation_age: 60  # default
+          - super_balance
+          - withdrawal_amount: 0  # default for non-withdrawal queries
+
+      benefit:
+        name: "Centrelink Calculator"
+        uc_function: "au_check_pension_impact"
+        authority: "Department of Social Services"
+        citations: ["AU-PENSION-001"]
+        query_template: |
+          SELECT super_advisory_demo.pension_calculators.au_check_pension_impact(
+              '{member_id}', {age}, '{marital_status}',
+              {balance}, {other_assets}, {proposed_withdrawal}
+          ) as result
+        params:
+          - member_id
+          - age
+          - marital_status: "Single"  # default
+          - balance: super_balance
+          - other_assets: 0  # default
+          - proposed_withdrawal: 0  # default (no withdrawal for balance inquiry)
+
+      projection:
+        name: "Superannuation Projection"
+        uc_function: "au_project_balance"
+        authority: "ASFA"
+        citations: ["AU-STANDARD-001"]
+        query_template: |
+          SELECT super_advisory_demo.pension_calculators.au_project_balance(
+              '{member_id}', {age}, {balance},
+              {preservation_age}, 20
+          ) as result
+        params:
+          - member_id
+          - age
+          - balance: super_balance
+          - preservation_age: 60  # default
+
+  US:
+    tools:
+      tax:
+        name: "IRS 401(k) Tax Calculator"
+        uc_function: "us_calculate_401k_tax"
+        authority: "Internal Revenue Service"
+        citations: ["US-TAX-001", "US-PENALTY-001"]
+        query_template: |
+          SELECT super_advisory_demo.pension_calculators.us_calculate_401k_tax(
+              '{member_id}', '401k', {withdrawal_amount}, {age}
+          ) as result
+        params:
+          - member_id
+          - withdrawal_amount
+          - age
+
+      benefit:
+        name: "Social Security Calculator"
+        uc_function: "us_check_social_security"
+        authority: "Social Security Administration"
+        citations: ["US-SS-001"]
+        query_template: |
+          SELECT super_advisory_demo.pension_calculators.us_check_social_security(
+              '{member_id}', {age}, '{marital_status}',
+              {balance}
+          ) as result
+        params:
+          - member_id
+          - age
+          - marital_status: "Single"  # default
+          - balance: super_balance
+
+      projection:
+        name: "401(k) Projection"
+        uc_function: "us_project_401k_balance"
+        authority: "Department of Labor"
+        citations: ["US-RMD-001"]
+        query_template: |
+          SELECT super_advisory_demo.pension_calculators.us_project_401k_balance(
+              '{member_id}', {age}, 67, {balance}, 10000, 20
+          ) as result
+        params:
+          - member_id
+          - age
+          - balance: super_balance
+
+  UK:
+    tools:
+      tax:
+        name: "HMRC Pension Tax Calculator"
+        uc_function: "uk_calculate_pension_tax"
+        authority: "HM Revenue & Customs"
+        citations: ["UK-TAX-001"]
+        query_template: |
+          SELECT super_advisory_demo.pension_calculators.uk_calculate_pension_tax(
+              '{member_id}', {age}, {balance}, {withdrawal_amount}, 'standard'
+          ) as result
+        params:
+          - member_id
+          - age
+          - balance: super_balance
+          - withdrawal_amount
+
+      benefit:
+        name: "State Pension Calculator"
+        uc_function: "uk_check_state_pension"
+        authority: "Department for Work and Pensions"
+        citations: ["UK-PENSION-001"]
+        query_template: |
+          SELECT super_advisory_demo.pension_calculators.uk_check_state_pension(
+              '{member_id}',
+              {age},
+              {ni_qualifying_years},
+              '{marital_status}'
+          ) AS result
+        params:
+          - member_id
+          - age
+          - ni_qualifying_years: 35  # default
+          - marital_status: "married"  # default
+
+      projection:
+        name: "UK Pension Projection"
+        uc_function: "uk_project_pension_balance"
+        authority: "FCA"
+        citations: ["UK-DRAWDOWN-001"]
+        query_template: |
+          SELECT super_advisory_demo.pension_calculators.uk_project_pension_balance(
+              '{member_id}', {age}, {balance}, {withdrawal_amount}, 20
+          ) as result
+        params:
+          - member_id
+          - age
+          - balance: super_balance
+          - withdrawal_amount
+
+  # India configuration kept separate due to unique EPF/NPS handling
+  IN:
+    note: "India tools use EPF/NPS split (75%/25%) - see _call_in_tool() for special handling"
+    epf_split: 0.75
+    nps_split: 0.25
+    tools:
+      tax:
+        name: "EPF Tax Calculator"
+        uc_function: "in_calculate_epf_tax"
+        authority: "Income Tax Department"
+        citations: ["IN-EPF-001", "IN-TAX-001"]
+        uses_balance: "epf"  # 75% of total
+
+      benefit:
+        name: "NPS Benefits Calculator"
+        uc_function: "in_calculate_nps_benefits"
+        authority: "PFRDA"
+        citations: ["IN-NPS-001"]
+        uses_balance: "nps"  # 25% of total
+
+      eps_benefit:
+        name: "EPS Benefits Calculator"
+        uc_function: "in_calculate_eps_benefits"
+        authority: "Employees' Provident Fund Organisation (EPFO)"
+        citations: ["IN-EPS-001"]
+        uses_balance: "epf"  # 75% of total
+
+      projection:
+        name: "Retirement Corpus Projection"
+        uc_function: "in_project_retirement_corpus"
+        authority: "EPFO"
+        citations: ["IN-INTEREST-001"]
+        uses_balance: "total"  # Uses full balance

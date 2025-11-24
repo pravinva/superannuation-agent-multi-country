@@ -10,6 +10,7 @@ import streamlit as st
 import pandas as pd
 import mlflow
 from databricks.sdk import WorkspaceClient
+from ui.theme_config import COUNTRY_COLORS, COUNTRY_FLAGS, COUNTRY_WELCOME_COLORS
 
 BRANDCONFIG = {
     "brand_name": "Global Retirement Advisory",
@@ -61,37 +62,9 @@ def render_logo():
 # Advisory functions
 def render_member_card(member, is_selected=False, country="Australia"):
     """Render member card with flags, colors, and country-specific currency."""
-    
-    # Complete color/currency config with ALL keys
-    colors = {
-        "Australia": {
-            "flag": "🇦🇺", 
-            "primary": "#FFD700", 
-            "secondary": "#00843D", 
-            "currency": "A$"
-        },
-        "USA": {
-            "flag": "🇺🇸", 
-            "primary": "#B22234", 
-            "secondary": "#3C3B6E", 
-            "currency": "$"
-        },
-        "United Kingdom": {
-            "flag": "🇬🇧", 
-            "primary": "#C8102E", 
-            "secondary": "#012169", 
-            "currency": "£"
-        },
-        "India": {
-            "flag": "🇮🇳", 
-            "primary": "#FF9933", 
-            "secondary": "#138808", 
-            "currency": "₹"
-        }
-    }
-    
+
     # Get theme for country (with fallback to Australia)
-    t = colors.get(country, colors["Australia"])
+    t = COUNTRY_COLORS.get(country, COUNTRY_COLORS["Australia"])
     
     # Styling based on selection state
     border = f"5px solid {t['secondary']}" if is_selected else "1px solid #CCC"
@@ -121,20 +94,41 @@ def render_member_card(member, is_selected=False, country="Australia"):
 
 def render_country_welcome(country, intro, disclaimer):
     # Select appropriate flag for the chosen country
-    flags = {
-        "Australia": "🇦🇺",
-        "USA": "🇺🇸",
-        "United Kingdom": "🇬🇧",
-        "India": "🇮🇳"
-    }
-    country_flag = flags.get(country, "🌐")
-
+    country_flag = COUNTRY_FLAGS.get(country, "🌐")
+    
+    # Get colors for current country (default to Australia if not found)
+    colors = COUNTRY_WELCOME_COLORS.get(country, COUNTRY_WELCOME_COLORS["Australia"])
+    
     # Render country header with flag
     st.subheader(f"{country_flag} Advisory for {country}")
-
-    # Render main introduction
-    st.info(intro)
-
+    
+    # ✅ Professional pension company welcome message with national color gradients
+    st.markdown(f"""
+    <div style="
+        background: {colors['gradient']};
+        padding: 28px 32px;
+        border-radius: 12px;
+        margin: 20px 0;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        border-left: 4px solid {colors['border']};
+        position: relative;
+    ">
+        <div style="
+            background: {colors['text_bg']};
+            padding: 16px 20px;
+            border-radius: 8px;
+            color: {colors['text']};
+            font-family: 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+            font-size: 16px;
+            line-height: 1.7;
+            font-weight: 500;
+            letter-spacing: 0.01em;
+        ">
+            {intro}
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
     # Render disclaimer if available
     if disclaimer:
         st.caption(f"⚠️ {disclaimer}")
@@ -179,7 +173,7 @@ def render_audit_table(df):
 def render_enhanced_audit_tab():
     st.markdown("### 🧾 Governance & Audit Data")
     try:
-        from audit.audit_utils import get_audit_log
+        from utils.audit import get_audit_log
         result = get_audit_log()
         df = pd.DataFrame(result) if isinstance(result, list) else result
         if df.empty:
@@ -205,85 +199,298 @@ def render_enhanced_audit_tab():
         st.code(traceback.format_exc())
 
 def render_mlflow_traces_tab():
-    """MLflow tab - Clean production version."""
+    """MLflow tab - Clean production version with prompt registry."""
     import logging
     
     logger = logging.getLogger(__name__)
-    st.markdown("### 📊 MLflow Experiments & Evaluations")
     
-    try:
-        from config import MLFLOW_PROD_EXPERIMENT_PATH
+    # Create tabs for different MLflow views
+    tab1, tab2 = st.tabs(["📊 Experiment Runs", "📝 Prompt Registry"])
+    
+    with tab1:
+        st.markdown("### 📊 MLflow Experiments & Evaluations")
         
-        logger.info("Setting up MLflow connection...")
-        mlflow.set_tracking_uri("databricks")
+        try:
+            from config import MLFLOW_PROD_EXPERIMENT_PATH
+            
+            logger.info("Setting up MLflow connection...")
+            mlflow.set_tracking_uri("databricks")
+            
+            client = mlflow.tracking.MlflowClient()
+            exp = mlflow.get_experiment_by_name(MLFLOW_PROD_EXPERIMENT_PATH)
+            
+            if not exp:
+                st.error(f"❌ Experiment not found: `{MLFLOW_PROD_EXPERIMENT_PATH}`")
+                st.caption("Verify the experiment exists in your Databricks workspace.")
+                return
+            
+            # Success - show experiment info
+            st.success(f"✅ Connected to experiment: **{exp.name}**")
+            st.caption(f"Experiment ID: `{exp.experiment_id}` | Tracking URI: `{mlflow.get_tracking_uri()}`")
+            
+            logger.info(f"Fetching runs from experiment {exp.experiment_id}...")
+            runs = mlflow.search_runs(
+                [exp.experiment_id],
+                order_by=["start_time DESC"],
+                max_results=10
+            )
+            
+            if runs.empty:
+                st.info("ℹ️ No MLflow runs logged yet. Run some queries to populate this tab.")
+                return
+            
+            st.markdown(f"**Recent Runs** ({len(runs)} most recent)")
+            display_cols = ["run_id", "status", "start_time", "end_time"]
+            
+            # Add metrics if they exist
+            metric_cols = [c for c in runs.columns if c.startswith("metrics.")]
+            if metric_cols:
+                display_cols += metric_cols[:3]  # Show first 3 metrics
+            
+            st.dataframe(runs[display_cols], use_container_width=True)
+            
+            st.markdown("---")
+            
+            # Run inspector
+            st.subheader("🔍 Inspect Individual Run")
+            selected = st.selectbox("Choose run to inspect:", runs["run_id"].tolist())
+            
+            if selected:
+                run_details = client.get_run(selected)
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.markdown("**⚙️ Parameters**")
+                    if run_details.data.params:
+                        st.json(run_details.data.params)
+                    else:
+                        st.caption("No parameters logged")
+                
+                with col2:
+                    st.markdown("**📈 Metrics**")
+                    if run_details.data.metrics:
+                        st.json(run_details.data.metrics)
+                    else:
+                        st.caption("No metrics logged")
+                
+                # Show tags if any
+                if run_details.data.tags:
+                    with st.expander("🏷️ Tags"):
+                        st.json(run_details.data.tags)
         
-        client = mlflow.tracking.MlflowClient()
-        exp = mlflow.get_experiment_by_name(MLFLOW_PROD_EXPERIMENT_PATH)
+        except Exception as e:
+            logger.error(f"MLflow error: {e}", exc_info=True)
+            st.error(f"❌ MLflow connection failed: {str(e)[:100]}")
+            st.caption("Check your Databricks CLI authentication and experiment path.")
+    
+    with tab2:
+        st.markdown("### 📝 Prompt Registry")
+        st.caption("View and iterate on prompts registered in MLflow")
         
-        if not exp:
-            st.error(f"❌ Experiment not found: `{MLFLOW_PROD_EXPERIMENT_PATH}`")
-            st.caption("Verify the experiment exists in your Databricks workspace.")
-            return
-        
-        # Success - show experiment info
-        st.success(f"✅ Connected to experiment: **{exp.name}**")
-        st.caption(f"Experiment ID: `{exp.experiment_id}` | Tracking URI: `{mlflow.get_tracking_uri()}`")
-        
-        logger.info(f"Fetching runs from experiment {exp.experiment_id}...")
-        runs = mlflow.search_runs(
-            [exp.experiment_id],
-            order_by=["start_time DESC"],
-            max_results=10
-        )
-        
-        if runs.empty:
-            st.info("ℹ️ No MLflow runs logged yet. Run some queries to populate this tab.")
-            return
-        
-        st.markdown(f"**Recent Runs** ({len(runs)} most recent)")
-        display_cols = ["run_id", "status", "start_time", "end_time"]
-        
-        # Add metrics if they exist
-        metric_cols = [c for c in runs.columns if c.startswith("metrics.")]
-        if metric_cols:
-            display_cols += metric_cols[:3]  # Show first 3 metrics
-        
-        st.dataframe(runs[display_cols], use_container_width=True)
+        # ✅ Add button to manually register prompts
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.info("💡 **Tip:** Prompts are not automatically registered. Click the button below to register them now.")
+        with col2:
+            if st.button("🚀 Register Prompts Now", type="primary", use_container_width=True):
+                try:
+                    from prompts_registry import register_prompts_now
+                    with st.spinner("Registering prompts with MLflow..."):
+                        run_id = register_prompts_now()
+                    if run_id:
+                        st.success(f"✅ Prompts registered successfully! Run ID: `{run_id[:8]}...`")
+                        st.rerun()  # Refresh to show new run
+                    else:
+                        st.error("❌ Failed to register prompts. Check console for details.")
+                except Exception as e:
+                    st.error(f"❌ Error registering prompts: {str(e)}")
+                    import traceback
+                    with st.expander("Error details"):
+                        st.code(traceback.format_exc())
         
         st.markdown("---")
         
-        # Run inspector
-        st.subheader("🔍 Inspect Individual Run")
-        selected = st.selectbox("Choose run to inspect:", runs["run_id"].tolist())
+        try:
+            from config import MLFLOW_PROD_EXPERIMENT_PATH
+            
+            mlflow.set_tracking_uri("databricks")
+            client = mlflow.tracking.MlflowClient()
+            exp = mlflow.get_experiment_by_name(MLFLOW_PROD_EXPERIMENT_PATH)
+            
+            if not exp:
+                st.error(f"❌ Experiment not found: `{MLFLOW_PROD_EXPERIMENT_PATH}`")
+                return
+            
+            # Search for prompt registry runs (runs with prompt_version parameter)
+            all_runs = mlflow.search_runs(
+                [exp.experiment_id],
+                order_by=["start_time DESC"],
+                max_results=100
+            )
+            
+            # Filter for prompt registry runs
+            # Check if columns exist before filtering
+            has_prompt_version = 'params.prompt_version' in all_runs.columns
+            has_run_name = 'tags.mlflow.runName' in all_runs.columns
+            
+            if has_prompt_version and has_run_name:
+                prompt_runs = all_runs[
+                    all_runs['tags.mlflow.runName'].str.contains('prompts_', na=False, case=False) |
+                    all_runs['params.prompt_version'].notna()
+                ]
+            elif has_run_name:
+                # Only filter by run name if prompt_version column doesn't exist
+                prompt_runs = all_runs[
+                    all_runs['tags.mlflow.runName'].str.contains('prompts_', na=False, case=False)
+                ]
+            elif has_prompt_version:
+                # Only filter by prompt_version if run name column doesn't exist
+                prompt_runs = all_runs[
+                    all_runs['params.prompt_version'].notna()
+                ]
+            else:
+                # No filtering columns available, try to fetch individual runs
+                prompt_runs = pd.DataFrame()
+            
+            if prompt_runs.empty:
+                st.info("ℹ️ No prompt registry runs found yet.")
+                st.caption("Prompts are registered automatically when the system starts.")
+                st.markdown("""
+                **To register prompts manually:**
+                ```python
+                from prompts_registry import register_prompts_now
+                register_prompts_now()
+                ```
+                """)
+                return
+            
+            st.success(f"✅ Found {len(prompt_runs)} prompt registry version(s)")
+            
+            # Show prompt versions
+            st.markdown("**📋 Prompt Versions**")
+            prompt_versions = []
+            for _, run_row in prompt_runs.iterrows():
+                run_id = run_row['run_id']
+                try:
+                    run = client.get_run(run_id)
+                    # Check if prompt_version parameter exists
+                    version = run.data.params.get('prompt_version', None)
+                    if version is None:
+                        # Skip runs without prompt_version
+                        continue
+                    reg_time = run.data.params.get('registration_time', run.info.start_time)
+                    prompt_versions.append({
+                        'version': version,
+                        'run_id': run_id,
+                        'registered': reg_time,
+                        'run_name': run.info.run_name
+                    })
+                except Exception as e:
+                    # Skip runs that can't be loaded
+                    continue
+            
+            if not prompt_versions:
+                st.info("ℹ️ No prompt registry runs found yet.")
+                st.caption("Prompts are registered automatically when the system starts.")
+                st.markdown("""
+                **To register prompts manually:**
+                ```python
+                from prompts_registry import register_prompts_now
+                register_prompts_now()
+                ```
+                """)
+                return
+            
+            st.success(f"✅ Found {len(prompt_versions)} prompt registry version(s)")
+            
+            # Sort by version (newest first)
+            prompt_versions.sort(key=lambda x: x['registered'], reverse=True)
+            
+            # Version selector
+            version_options = [f"{v['version']} ({v['registered'][:10]})" for v in prompt_versions]
+            selected_version_idx = st.selectbox(
+                "Select prompt version to view:",
+                range(len(version_options)),
+                format_func=lambda x: version_options[x]
+            )
+            
+            selected_version = prompt_versions[selected_version_idx]
+            selected_run_id = selected_version['run_id']
+            
+            st.markdown(f"**Version:** `{selected_version['version']}` | **Run ID:** `{selected_run_id[:8]}...`")
+            
+            # Fetch artifacts for this run
+            try:
+                run = client.get_run(selected_run_id)
+                
+                # List artifacts
+                artifact_uri = run.info.artifact_uri
+                artifacts = []
+                try:
+                    from mlflow.tracking.artifact_utils import _download_artifact_from_uri
+                    import os
+                    import tempfile
+                    
+                    # Get artifact list
+                    artifact_list = client.list_artifacts(selected_run_id, "prompts")
+                    artifacts = [art.path for art in artifact_list if art.path.startswith("prompts/")]
+                    
+                    if artifacts:
+                        st.markdown("**📝 Registered Prompts**")
+                        
+                        # Display each prompt
+                        for artifact_path in sorted(artifacts):
+                            prompt_name = artifact_path.replace("prompts/", "").replace(".txt", "").replace(".json", "")
+                            
+                            with st.expander(f"📄 {prompt_name.replace('_', ' ').title()}", expanded=False):
+                                try:
+                                    # Download and display artifact
+                                    with tempfile.TemporaryDirectory() as tmpdir:
+                                        local_path = client.download_artifacts(selected_run_id, artifact_path, tmpdir)
+                                        with open(local_path, 'r') as f:
+                                            content = f.read()
+                                        
+                                        # Display with copy button
+                                        st.code(content, language='text')
+                                        
+                                        # Copy button
+                                        st.markdown(f"""
+                                        <button onclick="navigator.clipboard.writeText(`{content.replace('`', '\\`').replace('$', '\\$')}`)" 
+                                                style="padding: 8px 16px; background: #00843D; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                                            📋 Copy Prompt
+                                        </button>
+                                        """, unsafe_allow_html=True)
+                                        
+                                except Exception as e:
+                                    st.error(f"Error loading {prompt_name}: {e}")
+                                    
+                    else:
+                        st.warning("⚠️ No prompt artifacts found in this run.")
+                        st.caption("Prompts may not have been registered yet, or artifacts were not logged.")
+                
+                except Exception as e:
+                    st.warning(f"⚠️ Could not load artifacts: {e}")
+                    st.caption("Try downloading artifacts directly from MLflow UI.")
+                
+                # Show metadata
+                with st.expander("📊 Prompt Metadata"):
+                    if run.data.params:
+                        st.json(run.data.params)
+                    if run.data.metrics:
+                        st.json(run.data.metrics)
+            
+            except Exception as e:
+                st.error(f"Error loading prompt version: {e}")
+                import traceback
+                st.code(traceback.format_exc())
         
-        if selected:
-            run_details = client.get_run(selected)
-            
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.markdown("**⚙️ Parameters**")
-                if run_details.data.params:
-                    st.json(run_details.data.params)
-                else:
-                    st.caption("No parameters logged")
-            
-            with col2:
-                st.markdown("**📈 Metrics**")
-                if run_details.data.metrics:
-                    st.json(run_details.data.metrics)
-                else:
-                    st.caption("No metrics logged")
-            
-            # Show tags if any
-            if run_details.data.tags:
-                with st.expander("🏷️ Tags"):
-                    st.json(run_details.data.tags)
-            
-    except Exception as e:
-        logger.error(f"MLflow error: {e}", exc_info=True)
-        st.error(f"❌ MLflow connection failed: {str(e)[:100]}")
-        st.caption("Check your Databricks CLI authentication and experiment path.")
+        except Exception as e:
+            logger.error(f"Prompt registry error: {e}", exc_info=True)
+            st.error(f"❌ Error loading prompt registry: {str(e)[:200]}")
+            import traceback
+            with st.expander("Error details"):
+                st.code(traceback.format_exc())
 
 def render_cost_analysis_tab():
     """Cost Analysis tab - Clean production version with last run cost."""
@@ -296,7 +503,7 @@ def render_cost_analysis_tab():
     st.markdown("### 💰 Cost Analysis Dashboard")
     
     try:
-        from audit.audit_utils import get_query_cost
+        from utils.audit import get_query_cost
         
         logger.info("Loading cost data from UC governance...")
         data = get_query_cost(limit=100)
@@ -316,7 +523,7 @@ def render_cost_analysis_tab():
             
             # Get last run cost (most recent query)
             try:
-                from audit.audit_utils import get_audit_log
+                from utils.audit import get_audit_log
                 audit_data = get_audit_log(limit=1)  # Get most recent run
                 if audit_data:
                     last_run = audit_data[0]
@@ -545,27 +752,31 @@ def render_configuration_tab():
 
 
 def update_all_configuration(sql_id, main_temp, main_tokens, judge_temp, judge_tokens):
-    """Update config.py with all settings."""
+    """Update config/config.yaml with all settings."""
     import os
+    import yaml
+    from pathlib import Path
+
     try:
-        cfg = os.path.join(os.path.dirname(__file__), "config.py")
-        with open(cfg, "r") as f:
-            lines = f.readlines()
-        
-        with open(cfg, "w") as f:
-            for line in lines:
-                if line.strip().startswith("SQL_WAREHOUSE_ID ="):
-                    f.write(f'SQL_WAREHOUSE_ID = "{sql_id}"\n')
-                elif line.strip().startswith("MAIN_LLM_TEMPERATURE ="):
-                    f.write(f"MAIN_LLM_TEMPERATURE = {main_temp}\n")
-                elif line.strip().startswith("MAIN_LLM_MAX_TOKENS ="):
-                    f.write(f"MAIN_LLM_MAX_TOKENS = {main_tokens}\n")
-                elif line.strip().startswith("JUDGE_LLM_TEMPERATURE ="):
-                    f.write(f"JUDGE_LLM_TEMPERATURE = {judge_temp}\n")
-                elif line.strip().startswith("JUDGE_LLM_MAX_TOKENS ="):
-                    f.write(f"JUDGE_LLM_MAX_TOKENS = {judge_tokens}\n")
-                else:
-                    f.write(line)
+        # Path to config.yaml
+        config_dir = Path(__file__).parent / "config"
+        config_file = config_dir / "config.yaml"
+
+        # Load current config
+        with open(config_file, "r") as f:
+            config = yaml.safe_load(f)
+
+        # Update values
+        config['databricks']['sql_warehouse_id'] = sql_id
+        config['llm']['temperature'] = float(main_temp)
+        config['llm']['max_tokens'] = int(main_tokens)
+        config['validation_llm']['temperature'] = float(judge_temp)
+        config['validation_llm']['max_tokens'] = int(judge_tokens)
+
+        # Write back to file
+        with open(config_file, "w") as f:
+            yaml.safe_dump(config, f, default_flow_style=False, sort_keys=False)
+
         return True
     except Exception as e:
         import logging

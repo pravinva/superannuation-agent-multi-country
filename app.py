@@ -14,9 +14,16 @@ from ui_components import (
     render_cost_analysis_tab,
     render_configuration_tab
 )
-from progress_utils import initialize_live_progress_tracker
+from ui_monitoring_tabs import (
+    render_realtime_metrics_tab,
+    render_classification_analytics_tab,
+    render_quality_monitoring_tab,
+    render_enhanced_cost_analysis_tab,
+    render_system_health_tab
+)
+from utils.progress import initialize_progress_tracker
 from agent_processor import agent_query
-from data_utils import get_members_by_country
+from utils.lakehouse import get_members_by_country
 from country_content import COUNTRY_PROMPTS, COUNTRY_DISCLAIMERS
 
 # ============================================================================ #
@@ -49,6 +56,8 @@ if "current_country_code" not in st.session_state:
     st.session_state.current_country_code = None
 if "validation_mode" not in st.session_state:
     st.session_state.validation_mode = "llm_judge"
+if "query_executing" not in st.session_state:
+    st.session_state.query_executing = False
 
 # Country mappings
 COUNTRY_CODES = {"AU": "Australia", "US": "USA", "UK": "United Kingdom", "IN": "India"}
@@ -85,6 +94,10 @@ mode_options = {
 
 selected = st.sidebar.radio("Choose strategy:", options=list(mode_options.keys()), index=0)
 st.session_state.validation_mode = mode_options[selected]
+
+# ✅ CRITICAL: Initialize query execution flag
+if "query_executing" not in st.session_state:
+    st.session_state.query_executing = False
 
 # ============================================================================ #
 # ADVISORY PAGE
@@ -198,15 +211,85 @@ if page == "Advisory":
     
     question = st.text_input("Your question:", key="query_input")
     
+    # ✅ Show/Hide Logs Toggle (like the GitHub implementation)
+    # Initialize to False (not shown by default)
+    if 'show_processing_logs' not in st.session_state:
+        st.session_state.show_processing_logs = False
+    
+    # ✅ CRITICAL: Use session_state value directly for checkbox to ensure it respects our reset
+    show_logs = st.checkbox(
+        "🔍 Show Processing Logs",
+        value=st.session_state.show_processing_logs,
+        key="show_logs_checkbox"
+    )
+    
+    # ✅ CRITICAL: Update session_state from checkbox value
+    # This ensures checkbox state is synced with session_state
+    st.session_state.show_processing_logs = show_logs
+    
+    # ✅ CRITICAL: Show progress tracker if phases exist OR if query is executing
+    # This ensures progress shows even when switching pages mid-execution
+    has_phases = 'phases' in st.session_state and len(st.session_state.phases) > 0
+    is_executing = st.session_state.get('query_executing', False)
+    
+    # ✅ Show progress if checkbox is checked AND (phases exist OR query is executing)
+    # This ensures progress shows when switching back to Advisory page during execution
+    if (has_phases or is_executing) and show_logs:
+        # ✅ CRITICAL: Create placeholder for real-time updates
+        if 'progress_placeholder' not in st.session_state:
+            st.session_state.progress_placeholder = st.empty()
+        
+        # ✅ Render progress display (updates via direct placeholder updates during execution)
+        # No fragment needed - direct updates from mark_phase_running/complete work perfectly
+        from utils.progress import render_progress_fragment
+        try:
+            render_progress_fragment()
+        except:
+            pass
+        
+        # ✅ Show indicator if query is executing
+        if is_executing:
+            st.info("🔄 Query is currently processing... Progress will update in real-time.")
+    elif has_phases and not show_logs:
+        # ✅ CRITICAL: Hide logs when checkbox is unchecked
+        # Clear the placeholder to hide progress display
+        if 'progress_placeholder' in st.session_state:
+            st.session_state.progress_placeholder.empty()
+    
+    # ✅ CRITICAL: Show status if query is executing but logs are hidden
+    if is_executing and not show_logs:
+        st.info("🔄 Query is currently processing... Enable 'Show Processing Logs' to see progress.")
+    
     if st.button("🚀 Get Recommendation", type="primary", use_container_width=True):
         if not question:
             st.warning("Please enter a question first.")
         elif not st.session_state.selected_member:
             st.warning("Please select a member profile first.")
         else:
-            # ✅ Initialize live progress BEFORE starting the query
-            initialize_live_progress_tracker()
+            # ✅ CRITICAL: Reset show_processing_logs to False for new query
+            # Also clear the widget state to ensure checkbox resets
+            st.session_state.show_processing_logs = False
+            if 'show_logs_checkbox' in st.session_state:
+                del st.session_state['show_logs_checkbox']  # Clear widget state
             
+            # ✅ CRITICAL: Initialize phases FIRST (will trigger rerun)
+            initialize_progress_tracker()
+            st.session_state.query_executing = True
+            st.session_state.current_query = question  # Store query for execution block
+            
+            # ✅ CRITICAL: Force immediate rerun to show progress
+            st.rerun()
+    
+    # ✅ CRITICAL: Handle query execution (if query_executing flag is set)
+    # This runs after st.rerun() when button is clicked
+    # ✅ FIXED: Check if query already completed to prevent re-execution
+    if st.session_state.get('query_executing', False):
+        # ✅ CRITICAL: If agent_output already exists, query already completed
+        # Don't re-execute, just mark as complete
+        if st.session_state.get('agent_output'):
+            st.session_state.query_executing = False
+        else:
+            # Process query with spinner
             with st.spinner("🔄 Processing your request..."):
                 try:
                     # ✅ FIXED: agent_query now returns a dictionary, not 7 separate values
@@ -214,7 +297,7 @@ if page == "Advisory":
                         user_id=st.session_state.selected_member,
                         session_id=st.session_state.session_id,
                         country=country_code,  # ✅ Use country_code (AU, US, UK, IN) not display name
-                        query_string=question,
+                        query_string=st.session_state.get('current_query', question),
                         validation_mode=st.session_state.validation_mode,
                     )
                     
@@ -241,18 +324,102 @@ if page == "Advisory":
                     st.error(f"Error: {e}")
                     import traceback
                     st.code(traceback.format_exc())
+                    st.session_state.query_executing = False
+                finally:
+                    # ✅ CRITICAL: Always mark query as complete
+                    st.session_state.query_executing = False
     
+    # ✅ CRITICAL: Answer display - ALWAYS runs regardless of progress tracker errors
     if st.session_state.agent_output:
         st.markdown("---")
-        st.subheader("📊 Recommendation")
-        st.success(st.session_state.agent_output["answer"])
         
-        # Show validation results
-        if st.session_state.agent_output.get("judge_verdict"):
-            render_validation_results(
-                st.session_state.agent_output["judge_verdict"],
-                st.session_state.agent_output.get("response_dict", {})
-            )
+        # Check if validation failed (after all retries)
+        judge_verdict = st.session_state.agent_output.get("judge_verdict", {})
+        validation_passed = judge_verdict.get("passed", True)
+        validation_confidence = judge_verdict.get("confidence", 0.0)
+        has_violations = len(judge_verdict.get("violations", [])) > 0
+        
+        # Determine if answer is safe to show
+        # Failed if: validation explicitly failed AND has violations
+        answer_failed = (not validation_passed) and has_violations
+        
+        if answer_failed:
+            # ❌ VALIDATION FAILED - Show safe fallback message to user
+            st.subheader("📊 Response Status")
+            
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%);
+                        border-left: 6px solid #F59E0B;
+                        border-radius: 12px;
+                        padding: 24px;
+                        margin: 16px 0;
+                        box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+                    <span style="font-size: 32px;">⚠️</span>
+                    <span style="font-size: 20px; font-weight: 600; color: #92400E;">
+                        Unable to Process Request
+                    </span>
+                </div>
+                <p style="color: #78350F; font-size: 16px; line-height: 1.6; margin-bottom: 16px;">
+                    We're unable to provide a validated answer to your question at this time. 
+                    Our AI system detected potential issues with the response quality.
+                </p>
+                <p style="color: #78350F; font-size: 16px; line-height: 1.6; margin-bottom: 16px;">
+                    <strong>What happens next?</strong><br>
+                    • Our advisory team has been notified<br>
+                    • A qualified advisor will review your question<br>
+                    • We'll contact you within 24-48 hours with a personalized response
+                </p>
+                <p style="color: #78350F; font-size: 14px; margin-top: 16px;">
+                    <em>For urgent matters, please contact our member services team directly.</em>
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Show validation results for transparency
+            if judge_verdict:
+                render_validation_results(
+                    judge_verdict,
+                    st.session_state.agent_output.get("response_dict", {})
+                )
+            
+            # 🔒 INTERNAL REVIEW SECTION - Collapsed by default
+            with st.expander("🔧 INTERNAL REVIEW - AI Generated Response (For Dev Team Only)", expanded=False):
+                st.warning("⚠️ This response FAILED validation and was NOT shown to the user.")
+                st.markdown("**AI Generated Answer (Do Not Share With User):**")
+                st.code(st.session_state.agent_output["answer"], language=None)
+                
+                st.markdown("**Validation Issues:**")
+                for i, violation in enumerate(judge_verdict.get("violations", []), 1):
+                    st.markdown(f"""
+                    **Issue {i}:** `{violation.get('code', 'UNKNOWN')}`
+                    - **Severity:** {violation.get('severity', 'Unknown')}
+                    - **Detail:** {violation.get('detail', 'No details')}
+                    - **Evidence:** {violation.get('evidence', 'N/A')[:200]}...
+                    """)
+                
+                st.markdown("**Recommended Actions:**")
+                st.markdown("""
+                - Review the AI-generated answer above
+                - Check tool outputs and member data
+                - Verify regulatory compliance
+                - Manually craft appropriate response
+                - Update member via support channel
+                """)
+        
+        else:
+            # ✅ VALIDATION PASSED - Show answer with professional styling
+            st.subheader("📊 Your Personalized Recommendation")
+            
+            # Use simple st.success for clean display (no HTML issues)
+            st.success(st.session_state.agent_output["answer"])
+            
+            # Show validation results
+            if judge_verdict:
+                render_validation_results(
+                    judge_verdict,
+                    st.session_state.agent_output.get("response_dict", {})
+                )
         
         # Show cost information if available
         response_dict = st.session_state.agent_output.get("response_dict", {})
@@ -274,13 +441,25 @@ if page == "Advisory":
                 st.metric("Judge LLM Cost", f"${validation_cost:.6f}")
         
         render_postanswer_disclaimer(country_display)
-        
-        # Show citations
-        if st.session_state.agent_output.get("citations"):
+
+        # Show citations (only if they have meaningful content)
+        citations = st.session_state.agent_output.get("citations", [])
+        valid_citations = []
+
+        for cite in citations:
+            if isinstance(cite, dict):
+                regulation = cite.get('regulation', '')
+                # Skip citations with empty or "No details" regulation
+                if regulation and regulation != 'No details':
+                    valid_citations.append(cite)
+            elif cite:  # Non-empty string citation
+                valid_citations.append(cite)
+
+        if valid_citations:
             st.markdown("#### 📚 Citations & References")
-            for i, cite in enumerate(st.session_state.agent_output.get("citations", [])[:3], 1):
+            for i, cite in enumerate(valid_citations[:3], 1):
                 if isinstance(cite, dict):
-                    st.caption(f"[{i}] {cite.get('authority', 'Unknown')}: {cite.get('regulation', 'No details')}")
+                    st.caption(f"[{i}] {cite.get('authority', 'Unknown')}: {cite.get('regulation', '')}")
                 else:
                     st.caption(f"[{i}] {cite}")
 
@@ -289,25 +468,139 @@ if page == "Advisory":
 # ============================================================================ #
 
 elif page == "Governance":
-    from ui_components import apply_custom_styles
+    from ui_styles_professional import apply_professional_pension_theme
+    from ui_dashboard import render_dashboard_tab
     
-    apply_custom_styles()
+    apply_professional_pension_theme()
     
-    st.title("🔒 Governance, MLflow & Configuration")
+    st.title("🔒 Governance & Observability")
+    st.caption("💡 Professional monitoring dashboard - everything at a glance")
     
-    tabs = st.tabs(["🧾 Governance & Audit", "📊 MLflow Traces", "💰 Cost Analysis", "⚙️ Configuration"])
+    # 5-TAB DESIGN: Governance, MLflow, Config, Cost, Observability
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        "🔒 Governance",
+        "🔬 MLflow",
+        "⚙️ Config",
+        "💰 Cost",
+        "📊 Observability"
+    ])
     
-    with tabs[0]:
+    with tab1:  # Governance - Dashboard overview + Audit trail
+        st.markdown("### 📊 Governance Dashboard")
+        st.caption("Overview of system performance and audit trail")
+        
+        # ✅ Import dashboard components
+        from ui_dashboard import (
+            get_dashboard_data,
+            calculate_key_metrics,
+            render_metric_card,
+            render_health_stars,
+            render_system_status,
+            render_activity_feed,
+            render_quick_charts,
+            render_trust_footer
+        )
+        
+        # Get data (cached for 60 seconds)
+        df = get_dashboard_data()
+        
+        if not df.empty:
+            # Calculate metrics
+            metrics = calculate_key_metrics(df)
+            
+            # Key Metrics Row (full width)
+            st.markdown("### Key Metrics (Last 24 Hours)")
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                render_metric_card(
+                    "Total Queries",
+                    f"{metrics['total_queries']:,}",
+                    "Last 24h",
+                    True
+                )
+            
+            with col2:
+                render_metric_card(
+                    "Pass Rate",
+                    f"{metrics['pass_rate']:.1%}",
+                    "Good" if metrics['pass_rate'] >= 0.8 else "Needs attention",
+                    metrics['pass_rate'] >= 0.8
+                )
+            
+            with col3:
+                render_metric_card(
+                    "Avg Cost",
+                    f"${metrics['avg_cost']:.4f}",
+                    "Per query",
+                    True
+                )
+            
+            with col4:
+                health_stars = render_health_stars(metrics['health_score'])
+                render_metric_card(
+                    "Health Score",
+                    health_stars,
+                    f"{metrics['health_score']}/100",
+                    metrics['health_score'] >= 80
+                )
+            
+            st.markdown("---")
+            
+            # System Status Banner
+            render_system_status(df)
+            
+            st.markdown("---")
+        else:
+            st.info("📊 No data available for the last 24 hours. Run some queries to populate the dashboard!")
+        
+        # ✅ Audit Trail with full width right under key metrics
+        st.markdown("### 📋 Audit Trail")
         render_enhanced_audit_tab()
+        
+        # ✅ Recent Activity Feed below Audit Trail (optional - can be removed if not needed)
+        if not df.empty:
+            st.markdown("---")
+            render_activity_feed(df, limit=10)
+            
+            st.markdown("---")
+            
+            # Quick Charts
+            st.markdown("### Trends")
+            render_quick_charts(df)
+            
+            # Trust Footer
+            render_trust_footer()
     
-    with tabs[1]:
+    with tab2:  # MLflow - MLflow traces
+        st.markdown("### 🔬 MLflow Traces")
+        st.caption("Advanced MLflow experiment tracking and traces")
         render_mlflow_traces_tab()
     
-    with tabs[2]:
-        render_cost_analysis_tab()
-    
-    with tabs[3]:
+    with tab3:  # Config - Configuration settings
         render_configuration_tab()
+    
+    with tab4:  # Cost - Cost analysis
+        st.markdown("### 💰 Cost Analysis")
+        st.caption("Comprehensive cost breakdowns, trends, and projections")
+        
+        # ✅ Single comprehensive cost analysis view (no duplicates)
+        # All unique metrics are now in render_enhanced_cost_analysis_tab()
+        render_enhanced_cost_analysis_tab()
+    
+    with tab5:  # Observability - Real-time metrics, quality, health, classification
+        col1, col2 = st.columns([1, 1])
+        with col1:
+            render_realtime_metrics_tab()
+            
+            st.markdown("---")
+            render_quality_monitoring_tab()
+        
+        with col2:
+            render_classification_analytics_tab()
+            
+            st.markdown("---")
+            render_system_health_tab()
     
     st.markdown("---")
     st.caption(f"🏦 {BRANDCONFIG['brand_name']} | Session: {st.session_state.session_id[:8]}...")
