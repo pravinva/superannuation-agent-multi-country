@@ -21,6 +21,18 @@ def _load_yaml_config():
     with open(_config_yaml_path, 'r') as f:
         return yaml.safe_load(f)
 
+def _get_env_or_config(env_var, config_value):
+    """Get value from environment variable or fall back to config.
+
+    Args:
+        env_var: Environment variable name (e.g., 'DATABRICKS_SQL_WAREHOUSE_ID')
+        config_value: Value from YAML config to use as fallback
+
+    Returns:
+        Value from environment if set, otherwise config value
+    """
+    return os.environ.get(env_var, config_value)
+
 # Load config once at import time
 _config = _load_yaml_config()
 
@@ -48,17 +60,19 @@ CLASSIFIER_LLM_ENDPOINT = _config['classifier_llm']['endpoint']
 # ============================================================================
 # Databricks Configuration
 # ============================================================================
-SQL_WAREHOUSE_ID = _config['databricks']['sql_warehouse_id']
-UNITY_CATALOG = _config['databricks']['unity_catalog']
-UNITY_SCHEMA = _config['databricks']['unity_schema']
+# Environment variables take precedence over config.yaml
+SQL_WAREHOUSE_ID = _get_env_or_config('DATABRICKS_SQL_WAREHOUSE_ID', _config['databricks']['sql_warehouse_id'])
+UNITY_CATALOG = _get_env_or_config('DATABRICKS_UNITY_CATALOG', _config['databricks']['unity_catalog'])
+UNITY_SCHEMA = _get_env_or_config('DATABRICKS_UNITY_SCHEMA', _config['databricks']['unity_schema'])
 GOVERNANCE_TABLE = _config['databricks']['governance_table']
 MEMBER_PROFILES_TABLE = _config['databricks']['member_profiles_table']
 
 # ============================================================================
 # MLflow Configuration
 # ============================================================================
-MLFLOW_PROD_EXPERIMENT_PATH = _config['mlflow']['prod_experiment_path']
-MLFLOW_OFFLINE_EVAL_PATH = _config['mlflow']['offline_eval_path']
+# Environment variables take precedence over config.yaml
+MLFLOW_PROD_EXPERIMENT_PATH = _get_env_or_config('MLFLOW_EXPERIMENT_PATH', _config['mlflow']['prod_experiment_path'])
+MLFLOW_OFFLINE_EVAL_PATH = _get_env_or_config('MLFLOW_EVAL_PATH', _config['mlflow']['offline_eval_path'])
 
 # ============================================================================
 # Brand Configuration

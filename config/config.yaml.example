@@ -1,6 +1,7 @@
-# Superannuation Agent Configuration
+# Superannuation Agent Configuration - EXAMPLE FILE
+# Copy this file to config.yaml and update with your values
 # Environment variables can override any setting using: AGENT_{SECTION}_{KEY}
-# Example: AGENT_LLM_TEMPERATURE=0.5
+# Example: AGENT_DATABRICKS_SQL_WAREHOUSE_ID=abc123
 
 # Main LLM Configuration (for agent synthesis and planning)
 llm:
@@ -25,19 +26,19 @@ classifier_llm:
   max_tokens: 500
 
 # Databricks Configuration
-# IMPORTANT: Set DATABRICKS_SQL_WAREHOUSE_ID environment variable or update below
+# IMPORTANT: Update these values for your environment
 databricks:
-  sql_warehouse_id: "YOUR_SQL_WAREHOUSE_ID_HERE"  # Override with DATABRICKS_SQL_WAREHOUSE_ID env var
+  sql_warehouse_id: "YOUR_SQL_WAREHOUSE_ID_HERE"  # Get from Databricks SQL Warehouses page
   unity_catalog: "super_advisory_demo"
   unity_schema: "member_data"
   governance_table: "governance"
   member_profiles_table: "member_profiles"
 
 # MLflow Configuration
-# IMPORTANT: Set MLFLOW_EXPERIMENT_PATH and MLFLOW_EVAL_PATH environment variables or update below
+# IMPORTANT: Update these paths for your environment
 mlflow:
-  prod_experiment_path: "/Users/<your-email>@databricks.com/prodretirement-advisory"  # Override with MLFLOW_EXPERIMENT_PATH env var
-  offline_eval_path: "/Users/<your-email>@databricks.com/retirement-eval"  # Override with MLFLOW_EVAL_PATH env var
+  prod_experiment_path: "/Users/<your-email>@databricks.com/prodretirement-advisory"
+  offline_eval_path: "/Users/<your-email>@databricks.com/retirement-eval"
 
 # Brand Configuration
 brand:
