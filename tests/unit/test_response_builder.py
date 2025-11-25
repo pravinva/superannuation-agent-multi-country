@@ -79,8 +79,8 @@ class TestResponseBuilderInitialization:
 
         assert builder.workspace_client == mock_workspace
         assert builder.model_type == "claude-sonnet-4"
-        assert builder.temperature == 0.1  # MAIN_LLM_TEMPERATURE from config
-        assert builder.max_tokens == 2000  # MAIN_LLM_MAX_TOKENS from config
+        assert builder.temperature == 0.2  # MAIN_LLM_TEMPERATURE from config
+        assert builder.max_tokens == 750  # MAIN_LLM_MAX_TOKENS from config
 
     @patch('agents.response_builder.get_template_manager')
     @patch('agents.response_builder.ContextFormatter')

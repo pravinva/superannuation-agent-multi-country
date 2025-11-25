@@ -406,7 +406,7 @@ class TestEdgeCases:
 
         # Create long violations list
         violations = [{"code": f"ERR{i}", "detail": f"Error {i}"} for i in range(100)]
-        json_str = json.dumps({"passed": false, "confidence": 0.5, "violations": violations})
+        json_str = json.dumps({"passed": False, "confidence": 0.5, "violations": violations})
 
         result = parser.parse_validation_response(json_str)
 

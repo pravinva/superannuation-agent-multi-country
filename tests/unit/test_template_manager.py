@@ -371,8 +371,11 @@ class TestAIClassifyQueryRendering:
         manager = TemplateManager()
         query = manager.render_ai_classify_query("What's my balance?")
 
+        # The query should contain the escaped version (with doubled apostrophe)
         assert "What''s my balance?" in query
-        assert "What's my balance?" not in query.replace("What''s", "What's")
+        # Count the apostrophes to ensure escaping happened (should be 2, not 1)
+        assert query.count("What''s") >= 1
+        assert query.count("What's") == 0  # No unescaped single apostrophes
 
 
 class TestCacheFunctionality:

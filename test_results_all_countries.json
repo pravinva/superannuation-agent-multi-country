@@ -1,0 +1,211 @@
+{
+  "timestamp": "2025-11-25T03:21:08.664232",
+  "duration_seconds": 311.119474,
+  "summary": {
+    "total": 13,
+    "passed": 10,
+    "partial": 0,
+    "failed": 3,
+    "success_rate": 76.92307692307693
+  },
+  "results": [
+    {
+      "test": "AU tax calculation",
+      "country": "AU",
+      "member": "David Kim",
+      "status": "PASSED",
+      "tools_called": [
+        "tax"
+      ],
+      "expected_tools": [
+        "tax"
+      ],
+      "validation": "Pass",
+      "confidence": 1.0,
+      "cost": 0.042480000000000004
+    },
+    {
+      "test": "AU pension impact",
+      "country": "AU",
+      "member": "Michelle Brown",
+      "status": "PASSED",
+      "tools_called": [
+        "benefit"
+      ],
+      "expected_tools": [
+        "benefit"
+      ],
+      "validation": "Pass",
+      "confidence": 1.0,
+      "cost": 0.046485
+    },
+    {
+      "test": "AU projection",
+      "country": "AU",
+      "member": "David Kim",
+      "status": "FAILED",
+      "tools_called": [
+        "tax",
+        "benefit"
+      ],
+      "expected_tools": [
+        "projection"
+      ],
+      "validation": "Pass",
+      "confidence": 1.0,
+      "cost": 0.035175
+    },
+    {
+      "test": "US 401k tax calculation",
+      "country": "US",
+      "member": "Robert Smith",
+      "status": "PASSED",
+      "tools_called": [
+        "tax"
+      ],
+      "expected_tools": [
+        "tax"
+      ],
+      "validation": "Pass",
+      "confidence": 1.0,
+      "cost": 0.036359999999999996
+    },
+    {
+      "test": "US Social Security benefits",
+      "country": "US",
+      "member": "Linda Johnson",
+      "status": "PASSED",
+      "tools_called": [
+        "benefit"
+      ],
+      "expected_tools": [
+        "benefit"
+      ],
+      "validation": "Pass",
+      "confidence": 1.0,
+      "cost": 0.036285
+    },
+    {
+      "test": "US 401k projection",
+      "country": "US",
+      "member": "Robert Smith",
+      "status": "PASSED",
+      "tools_called": [
+        "projection"
+      ],
+      "expected_tools": [
+        "projection"
+      ],
+      "validation": "Pass",
+      "confidence": 1.0,
+      "cost": 0.029205000000000002
+    },
+    {
+      "test": "UK pension tax calculation",
+      "country": "UK",
+      "member": "James Wilson",
+      "status": "PASSED",
+      "tools_called": [
+        "tax",
+        "benefit"
+      ],
+      "expected_tools": [
+        "tax"
+      ],
+      "validation": "Pass",
+      "confidence": 1.0,
+      "cost": 0.04074
+    },
+    {
+      "test": "UK State Pension eligibility",
+      "country": "UK",
+      "member": "Emma Thompson",
+      "status": "PASSED",
+      "tools_called": [
+        "benefit"
+      ],
+      "expected_tools": [
+        "benefit"
+      ],
+      "validation": "Pass",
+      "confidence": 1.0,
+      "cost": 0.03282
+    },
+    {
+      "test": "UK pension projection",
+      "country": "UK",
+      "member": "James Wilson",
+      "status": "FAILED",
+      "tools_called": [
+        "benefit"
+      ],
+      "expected_tools": [
+        "projection"
+      ],
+      "validation": "Pass",
+      "confidence": 1.0,
+      "cost": 0.03951
+    },
+    {
+      "test": "India EPF tax calculation",
+      "country": "IN",
+      "member": "Rajesh Kumar",
+      "status": "PASSED",
+      "tools_called": [
+        "tax"
+      ],
+      "expected_tools": [
+        "tax"
+      ],
+      "validation": "Pass",
+      "confidence": 1.0,
+      "cost": 0.02994
+    },
+    {
+      "test": "India NPS benefits",
+      "country": "IN",
+      "member": "Priya Sharma",
+      "status": "FAILED",
+      "tools_called": [
+        "eps_benefit"
+      ],
+      "expected_tools": [
+        "benefit"
+      ],
+      "validation": "Pass",
+      "confidence": 1.0,
+      "cost": 0.039224999999999996
+    },
+    {
+      "test": "India EPS pension",
+      "country": "IN",
+      "member": "Rajesh Kumar",
+      "status": "PASSED",
+      "tools_called": [
+        "eps_benefit"
+      ],
+      "expected_tools": [
+        "eps_benefit"
+      ],
+      "validation": "Pass",
+      "confidence": 1.0,
+      "cost": 0.03855
+    },
+    {
+      "test": "India retirement corpus projection",
+      "country": "IN",
+      "member": "Rajesh Kumar",
+      "status": "PASSED",
+      "tools_called": [
+        "projection",
+        "eps_benefit"
+      ],
+      "expected_tools": [
+        "projection"
+      ],
+      "validation": "Pass",
+      "confidence": 1.0,
+      "cost": 0.04842
+    }
+  ]
+}
