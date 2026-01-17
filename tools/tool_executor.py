@@ -248,6 +248,11 @@ class UnifiedToolExecutor:
                         param, profile, withdrawal_amount, member_id
                     )
 
+        # Inject calculator catalog/schema for query templates
+        from config import UNITY_CATALOG
+        resolved_params.setdefault('calc_catalog', UNITY_CATALOG)
+        resolved_params.setdefault('calc_schema', 'pension_calculators')
+
         # Format query template
         try:
             query = template.format(

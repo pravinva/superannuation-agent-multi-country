@@ -44,7 +44,7 @@ def log_query_event(
     total_time_seconds: float = 0.0
 ):
     """
-    Log query event to super_advisory_demo.member_data.governance table.
+    Log query event to the configured Unity Catalog governance table.
     
     Includes cost, timing, citations, and validation details.
     
@@ -68,7 +68,7 @@ def log_query_event(
         validation_attempts: Number of validation attempts
         total_time_seconds: Total execution time
     """
-    from config import SQL_WAREHOUSE_ID
+    from config import SQL_WAREHOUSE_ID, UNITY_CATALOG, UNITY_SCHEMA
     
     try:
         # Handle defaults and backward compatibility
@@ -86,7 +86,7 @@ def log_query_event(
         
         # Build the SQL
         insert_sql = f"""
-        INSERT INTO super_advisory_demo.member_data.governance (
+        INSERT INTO {UNITY_CATALOG}.{UNITY_SCHEMA}.governance (
             event_id, timestamp, user_id, session_id, country, query_string,
             agent_response, result_preview, cost, citations, tool_used,
             judge_response, judge_verdict, judge_confidence,

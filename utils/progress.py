@@ -134,14 +134,16 @@ def reset_progress_tracker():
                 'duration': None,
                 'error': None
             }
-    
-    # Clear the progress placeholder to prevent stale UI
-    if 'progress_placeholder' in st.session_state:
-        st.session_state.progress_placeholder.empty()
-    
-    # Reinitialize fresh placeholder
-    st.session_state.progress_placeholder = st.empty()
-    st.session_state.progress_initialized = True
+
+    # IMPORTANT:
+    # The placeholder is owned by `app.py` (inside the "Show Processing Logs" expander).
+    # Recreating `st.empty()` here (during agent execution) can overwrite that placeholder,
+    # causing the UI to flash and then clear immediately.
+    #
+    # We only clear the placeholder when the user has *explicitly* chosen to hide logs.
+    if not st.session_state.get('show_processing_logs', False):
+        if 'progress_placeholder' in st.session_state:
+            st.session_state.progress_placeholder.empty()
 
 
 # ============================================================================

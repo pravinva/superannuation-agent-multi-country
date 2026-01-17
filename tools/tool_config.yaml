@@ -10,7 +10,7 @@ countries:
         authority: "Australian Taxation Office"
         citations: ["AU-TAX-001"]
         query_template: |
-          SELECT super_advisory_demo.pension_calculators.au_calculate_tax(
+          SELECT {calc_catalog}.{calc_schema}.au_calculate_tax(
               '{member_id}', {age}, {preservation_age},
               {super_balance}, {withdrawal_amount}
           ) as result
@@ -27,7 +27,7 @@ countries:
         authority: "Department of Social Services"
         citations: ["AU-PENSION-001"]
         query_template: |
-          SELECT super_advisory_demo.pension_calculators.au_check_pension_impact(
+          SELECT {calc_catalog}.{calc_schema}.au_check_pension_impact(
               '{member_id}', {age}, '{marital_status}',
               {balance}, {other_assets}, {proposed_withdrawal}
           ) as result
@@ -45,7 +45,7 @@ countries:
         authority: "ASFA"
         citations: ["AU-STANDARD-001"]
         query_template: |
-          SELECT super_advisory_demo.pension_calculators.au_project_balance(
+          SELECT {calc_catalog}.{calc_schema}.au_project_balance(
               '{member_id}', {age}, {balance},
               {preservation_age}, 20
           ) as result
@@ -63,7 +63,7 @@ countries:
         authority: "Internal Revenue Service"
         citations: ["US-TAX-001", "US-PENALTY-001"]
         query_template: |
-          SELECT super_advisory_demo.pension_calculators.us_calculate_401k_tax(
+          SELECT {calc_catalog}.{calc_schema}.us_calculate_401k_tax(
               '{member_id}', '401k', {withdrawal_amount}, {age}
           ) as result
         params:
@@ -77,7 +77,7 @@ countries:
         authority: "Social Security Administration"
         citations: ["US-SS-001"]
         query_template: |
-          SELECT super_advisory_demo.pension_calculators.us_check_social_security(
+          SELECT {calc_catalog}.{calc_schema}.us_check_social_security(
               '{member_id}', {age}, '{marital_status}',
               {balance}
           ) as result
@@ -93,7 +93,7 @@ countries:
         authority: "Department of Labor"
         citations: ["US-RMD-001"]
         query_template: |
-          SELECT super_advisory_demo.pension_calculators.us_project_401k_balance(
+          SELECT {calc_catalog}.{calc_schema}.us_project_401k_balance(
               '{member_id}', {age}, 67, {balance}, 10000, 20
           ) as result
         params:
@@ -109,7 +109,7 @@ countries:
         authority: "HM Revenue & Customs"
         citations: ["UK-TAX-001"]
         query_template: |
-          SELECT super_advisory_demo.pension_calculators.uk_calculate_pension_tax(
+          SELECT {calc_catalog}.{calc_schema}.uk_calculate_pension_tax(
               '{member_id}', {age}, {balance}, {withdrawal_amount}, 'standard'
           ) as result
         params:
@@ -124,7 +124,7 @@ countries:
         authority: "Department for Work and Pensions"
         citations: ["UK-PENSION-001"]
         query_template: |
-          SELECT super_advisory_demo.pension_calculators.uk_check_state_pension(
+          SELECT {calc_catalog}.{calc_schema}.uk_check_state_pension(
               '{member_id}',
               {age},
               {ni_qualifying_years},
@@ -142,7 +142,7 @@ countries:
         authority: "FCA"
         citations: ["UK-DRAWDOWN-001"]
         query_template: |
-          SELECT super_advisory_demo.pension_calculators.uk_project_pension_balance(
+          SELECT {calc_catalog}.{calc_schema}.uk_project_pension_balance(
               '{member_id}', {age}, {balance}, {withdrawal_amount}, 20
           ) as result
         params:

@@ -7,7 +7,7 @@
 # ✅ Error handling for failed UC functions
 # ✅ Now uses utils.lakehouse for SQL execution
 
-from config import SQL_WAREHOUSE_ID
+from config import SQL_WAREHOUSE_ID, UNITY_CATALOG
 from utils.lakehouse import execute_sql_statement, get_citations
 from tools.tool_executor import UnifiedToolExecutor, ToolExecutionError, ToolConfigurationError
 from shared.logging_config import get_logger
@@ -142,7 +142,7 @@ def _call_in_tool(tool_id, member_id, profile, withdrawal_amount, warehouse_id):
     
     if tool_id == "tax":
         query = f"""
-        SELECT super_advisory_demo.pension_calculators.in_calculate_epf_tax(
+        SELECT {UNITY_CATALOG}.pension_calculators.in_calculate_epf_tax(
             '{member_id}', {age}, {epf_balance}, {withdrawal_amount_num}
         ) as result
         """
@@ -154,7 +154,7 @@ def _call_in_tool(tool_id, member_id, profile, withdrawal_amount, warehouse_id):
         annuity_pct = max(profile.get("annuity_purchase_pct", 40), 40)
         pension_rate = profile.get("monthly_pension_rate", 6)
         query = f"""
-        SELECT super_advisory_demo.pension_calculators.in_calculate_nps_benefits(
+        SELECT {UNITY_CATALOG}.pension_calculators.in_calculate_nps_benefits(
             '{member_id}',
             {age},
             {nps_balance},
@@ -168,7 +168,7 @@ def _call_in_tool(tool_id, member_id, profile, withdrawal_amount, warehouse_id):
     
     elif tool_id == "eps_benefit":
         query = f"""
-        SELECT super_advisory_demo.pension_calculators.in_calculate_eps_benefits(
+        SELECT {UNITY_CATALOG}.pension_calculators.in_calculate_eps_benefits(
             '{member_id}',
             {age},
             {epf_balance},
@@ -187,7 +187,7 @@ def _call_in_tool(tool_id, member_id, profile, withdrawal_amount, warehouse_id):
         projection_years = retirement_age - age if retirement_age > age else 20
 
         query = f"""
-        SELECT super_advisory_demo.pension_calculators.in_project_retirement_corpus(
+        SELECT {UNITY_CATALOG}.pension_calculators.in_project_retirement_corpus(
             '{member_id}',
             {age},
             {epf_balance},

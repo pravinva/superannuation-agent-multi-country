@@ -122,6 +122,9 @@ def get_member_profiles_table_path():
     """Get member profiles table full path"""
     return get_table_path(MEMBER_PROFILES_TABLE)
 
+
+
+
 def calculate_llm_cost(input_tokens, output_tokens, model_type):
     """
     Calculate cost based on official Databricks GenAI pricing.

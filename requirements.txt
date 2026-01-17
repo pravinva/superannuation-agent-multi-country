@@ -2,7 +2,9 @@
 # Production-ready multi-country retirement advisory system
 
 # Core Framework
-# Pin to 1.51.0 - older versions (1.37-1.40) have "Bad setIn index" widget state bugs
+# Pin to 1.51.0
+# - Older versions (1.37-1.40) have "Bad setIn index" widget state bugs
+# - Newer Streamlit versions emit deprecation warnings for `use_container_width` (migrating to `width='stretch'`)
 streamlit==1.51.0
 
 # Databricks & MLflow

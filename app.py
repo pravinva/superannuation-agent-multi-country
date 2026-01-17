@@ -73,7 +73,7 @@ def safe_dataframe_check(df):
 # ============================================================================ #
 
 if os.path.exists("logo.png"):
-    st.sidebar.image("logo.png", use_container_width=True)
+    st.sidebar.image("logo.png", width='stretch')
 st.sidebar.title(BRANDCONFIG["brand_name"])
 st.sidebar.caption(BRANDCONFIG.get("subtitle", "Enterprise-Grade Agentic AI on Databricks"))
 st.sidebar.markdown("---")
@@ -142,13 +142,24 @@ if page == "Advisory":
     st.markdown("---")
     st.subheader("📋 Select Member Profile")
     
+    # Always show up to 3 members (no extra UI controls).
+    # We choose a stable sample per country for this session to avoid widget-key mismatch issues.
+    if "members_sample_seed" not in st.session_state:
+        st.session_state.members_sample_seed = 42
+    if "members_seed_country" not in st.session_state:
+        st.session_state.members_seed_country = None
+
+    # New country => pick a new seed once (stable across reruns within that country)
+    if st.session_state.members_seed_country != country_code:
+        st.session_state.members_sample_seed = uuid.uuid4().int % (2**32 - 1)
+        st.session_state.members_seed_country = country_code
+
     if st.session_state.current_country_code != country_code:
         members_df = get_members_by_country(country_code)
         if safe_dataframe_check(members_df):
-            if len(members_df) > 4:
-                # ✅ CRITICAL: Use fixed random_state to ensure same members are always selected
-                # random_state=None would pick different members on each rerun, causing widget key mismatches
-                members_df = members_df.sample(n=4, random_state=42)
+
+            if len(members_df) > 3:
+                members_df = members_df.sample(n=3, random_state=st.session_state.members_sample_seed)
             st.session_state.members_list = members_df.to_dict("records")
         else:
             st.session_state.members_list = []
@@ -168,7 +179,7 @@ if page == "Advisory":
                 button_type = "primary" if is_selected else "secondary"
                 button_label = f"{'✓ ' if is_selected else ''}Select {member.get('name','Unknown')}"
                 
-                if st.button(button_label, key=f"btn_{member_id}_{country_code}", use_container_width=True, type=button_type):
+                if st.button(button_label, key=f"btn_{member_id}_{country_code}", width='stretch', type=button_type):
                     st.session_state.selected_member = member_id
                     log_rerun("member_selection", f"Selected member: {member_id}")
                     st.rerun()
@@ -213,7 +224,7 @@ if page == "Advisory":
     for i, q in enumerate(sample_questions.get(country_display, [])):
         with cols[i]:
             # ✅ Include country_code in key to avoid conflicts when switching countries
-            if st.button(q, key=f"sample_q_{country_code}_{i}", use_container_width=True):
+            if st.button(q, key=f"sample_q_{country_code}_{i}", width='stretch'):
                 st.session_state.query_input = q
     
     question = st.text_input("Your question:", key="query_input")
@@ -267,15 +278,15 @@ if page == "Advisory":
     if is_executing and not show_logs:
         st.info("🔄 Query is currently processing... Enable 'Show Processing Logs' to see progress.")
     
-    if st.button("🚀 Get Recommendation", type="primary", use_container_width=True):
+    if st.button("🚀 Get Recommendation", type="primary", width='stretch'):
         if not question:
             st.warning("Please enter a question first.")
         elif not st.session_state.selected_member:
             st.warning("Please select a member profile first.")
         else:
-            # ✅ CRITICAL: Reset show_processing_logs to False for new query
-            # Update session state value but DON'T delete widget key (causes widget index mismatch)
-            st.session_state.show_processing_logs = False
+            # ✅ New query: clear previous output so the execution block doesn't short-circuit
+            # (it checks `if st.session_state.get('agent_output')` to avoid double execution).
+            st.session_state.agent_output = None
 
             # ✅ CRITICAL: Initialize phases FIRST (will trigger rerun)
             initialize_progress_tracker()

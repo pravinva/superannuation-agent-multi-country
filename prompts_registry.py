@@ -501,7 +501,7 @@ MEMBER PROFILE (for reference):
         return f"""SELECT DISTINCT
   citation_id, country, authority, regulation_name,
   regulation_code, source_url, description
-FROM super_advisory_demo.member_data.citation_registry
+FROM {UNITY_CATALOG}.{UNITY_SCHEMA}.citation_registry
 WHERE country = '{country}'
   AND ({where_clause})
 ORDER BY citation_id"""

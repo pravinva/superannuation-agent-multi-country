@@ -140,7 +140,13 @@ When answering questions about "unrestricted access" or "access without restrict
 - Social Security benefit calculations
 Discuss all monetary values in USD.""",
         
-        special_instructions=None,
+        special_instructions="""CRITICAL FOR USA MEMBERS:
+When answering questions about early withdrawals for education:
+- 401(k) plans generally do NOT have a qualified higher education expense exception to the 10% additional tax.
+- IRAs have different exception rules, but do NOT recommend an IRA rollover as a penalty-avoidance strategy.
+- If asked about education funding, prefer safe alternatives: 401(k) loan (if the plan permits), hardship rules (plan-specific), scholarships/loans, and consulting a tax professional.
+- Avoid implying that rolling a 401(k) to an IRA will automatically avoid penalties.
+""",
         
         greeting_style="neutral",
         available_tools=["tax", "benefit", "projection"]

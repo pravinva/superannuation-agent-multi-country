@@ -447,6 +447,33 @@ CountryConfig(
    streamlit run app.py
    ```
 
+### Demo Notebooks
+
+Interactive Databricks notebooks demonstrating the complete system:
+
+**Setup & Data** (_resources/)
+- `00-setup.py` - Initialize catalog and schemas
+- `00-load-data.py` - Generate demo data with Faker
+- `bundle_config.yaml` - dbdemos configuration
+
+**Infrastructure** (01-setup/)
+- `01-unity-catalog-setup.py` - Create UC functions
+- `02-governance-setup.py` - Configure row-level security and audit logging
+
+**Agent Framework** (02-agent-demo/)
+- `01-agent-overview.py` - Architecture and design patterns
+- `02-build-agent.py` - Build and test the agent
+- `03-tool-integration.py` - Unity Catalog function calling
+- `04-validation.py` - LLM-as-a-Judge validation
+
+**Observability** (03-monitoring-demo/)
+- `01-mlflow-tracking.py` - Experiment tracking and metrics
+- `02-observability.py` - Latency and tool usage monitoring
+- `03-dashboard.py` - Governance dashboard
+
+**User Interface** (04-ui-demo/)
+- `01-streamlit-ui.py` - Interactive web interface demo
+
 ---
 
 ## Technology Stack
