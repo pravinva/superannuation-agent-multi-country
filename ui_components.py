@@ -147,7 +147,7 @@ def render_postanswer_disclaimer(country):
     notes = {
         "Australia": "Superannuation results are summaries only; verify with your fund.",
         "USA": "Assumes 401(k) contribution plan; verify withdrawal rules with IRS.",
-        "United Kingdom": "Complies with pension calculation guidelines but not FCA advice.",
+        "United Kingdom": "For general information only. Not regulated financial advice. Consult an FCA-authorized advisor for personal recommendations.",
         "India": "EPF corpus shown for typical contribution/interest; consult EPFO portal.",
     }
     st.caption(f"⚠️ {notes.get(country, 'General retirement illustration only.')}")
@@ -453,10 +453,12 @@ def render_mlflow_traces_tab():
                                         
                                         # Display with copy button
                                         st.code(content, language='text')
-                                        
+
                                         # Copy button
+                                        # Escape content for JavaScript (can't use backslash in f-string expression)
+                                        escaped_content = content.replace('`', '\\`').replace('$', '\\$')
                                         st.markdown(f"""
-                                        <button onclick="navigator.clipboard.writeText(`{content.replace('`', '\\`').replace('$', '\\$')}`)" 
+                                        <button onclick="navigator.clipboard.writeText(`{escaped_content}`)"
                                                 style="padding: 8px 16px; background: #00843D; color: white; border: none; border-radius: 4px; cursor: pointer;">
                                             📋 Copy Prompt
                                         </button>

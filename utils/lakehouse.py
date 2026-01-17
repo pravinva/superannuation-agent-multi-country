@@ -52,7 +52,7 @@ def execute_sql_query(query: str, warehouse_id: Optional[str] = None) -> pd.Data
         ValueError: If warehouse_id is not configured
         Exception: For SQL execution errors
     """
-    from config import SQL_WAREHOUSE_ID
+    from config import SQL_WAREHOUSE_ID, get_governance_table_path
     
     wh_id = warehouse_id or SQL_WAREHOUSE_ID
     
@@ -61,7 +61,21 @@ def execute_sql_query(query: str, warehouse_id: Optional[str] = None) -> pd.Data
         raise ValueError("SQL Warehouse ID not configured. Please set it in Configuration.")
     
     w = get_workspace_client()
-    
+
+    def _format_stmt_error(stmt) -> str:
+        """Best-effort extraction of Databricks statement error details."""
+        try:
+            err = getattr(getattr(stmt, 'status', None), 'error', None)
+            if not err:
+                return ''
+            code = getattr(err, 'error_code', None)
+            msg = getattr(err, 'message', None)
+            if code and msg:
+                return f'{code}: {msg}'
+            return str(err)
+        except Exception:
+            return ''
+
     try:
         statement = w.statement_execution.execute_statement(
             warehouse_id=wh_id,
@@ -83,7 +97,9 @@ def execute_sql_query(query: str, warehouse_id: Optional[str] = None) -> pd.Data
             else:
                 return pd.DataFrame()
         else:
-            raise Exception(f"Query failed with state: {statement.status.state}")
+            details = _format_stmt_error(statement)
+            suffix = f' ({details})' if details else ''
+            raise Exception(f"Query failed with state: {statement.status.state}{suffix}")
     
     except Exception as e:
         raise Exception(f"SQL execution error: {str(e)}")
@@ -102,7 +118,7 @@ def execute_sql_statement(query: str, warehouse_id: Optional[str] = None):
     Returns:
         Statement execution result or None if failed
     """
-    from config import SQL_WAREHOUSE_ID
+    from config import SQL_WAREHOUSE_ID, UNITY_CATALOG, UNITY_SCHEMA
     
     wh_id = warehouse_id or SQL_WAREHOUSE_ID
     
@@ -110,7 +126,21 @@ def execute_sql_statement(query: str, warehouse_id: Optional[str] = None):
         raise ValueError("SQL Warehouse ID not configured")
     
     w = get_workspace_client()
-    
+
+    def _format_stmt_error(stmt) -> str:
+        """Best-effort extraction of Databricks statement error details."""
+        try:
+            err = getattr(getattr(stmt, 'status', None), 'error', None)
+            if not err:
+                return ''
+            code = getattr(err, 'error_code', None)
+            msg = getattr(err, 'message', None)
+            if code and msg:
+                return f'{code}: {msg}'
+            return str(err)
+        except Exception:
+            return ''
+
     try:
         statement = w.statement_execution.execute_statement(
             warehouse_id=wh_id,
@@ -219,7 +249,7 @@ def get_citations(citation_ids: List[str], warehouse_id: Optional[str] = None) -
     if not citation_ids:
         return []
     
-    from config import SQL_WAREHOUSE_ID
+    from config import SQL_WAREHOUSE_ID, UNITY_CATALOG, UNITY_SCHEMA
     wh_id = warehouse_id or SQL_WAREHOUSE_ID
     
     ids_str = "', '".join(citation_ids)
@@ -227,7 +257,7 @@ def get_citations(citation_ids: List[str], warehouse_id: Optional[str] = None) -
     SELECT 
         citation_id, authority, regulation_name, regulation_code,
         source_url, description
-    FROM super_advisory_demo.member_data.citation_registry
+    FROM {UNITY_CATALOG}.{UNITY_SCHEMA}.citation_registry
     WHERE citation_id IN ('{ids_str}')
     ORDER BY citation_id
     """
@@ -266,12 +296,12 @@ def get_audit_logs(limit: int = 50) -> List[Dict]:
     Returns:
         List of audit log dictionaries with classification_method extracted
     """
-    from config import SQL_WAREHOUSE_ID
+    from config import SQL_WAREHOUSE_ID, get_governance_table_path
     
     try:
         sql = f"""
         SELECT *
-        FROM super_advisory_demo.member_data.governance
+        FROM {get_governance_table_path()}
         ORDER BY timestamp DESC
         LIMIT {limit}
         """
@@ -349,7 +379,7 @@ def get_cost_summary(limit: int = 100) -> List[Dict]:
     Returns:
         List of cost summary dictionaries
     """
-    from config import SQL_WAREHOUSE_ID
+    from config import SQL_WAREHOUSE_ID, get_governance_table_path
     
     try:
         sql = f"""
@@ -359,7 +389,7 @@ def get_cost_summary(limit: int = 100) -> List[Dict]:
             ROUND(SUM(cost), 4) AS total_cost,
             COUNT(*) AS query_count,
             ROUND(AVG(cost), 6) AS avg_cost
-        FROM super_advisory_demo.member_data.governance
+        FROM {get_governance_table_path()}
         GROUP BY country, user_id
         ORDER BY total_cost DESC
         LIMIT {limit}

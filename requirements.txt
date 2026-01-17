@@ -2,7 +2,10 @@
 # Production-ready multi-country retirement advisory system
 
 # Core Framework
-streamlit>=1.37.0
+# Pin to 1.51.0
+# - Older versions (1.37-1.40) have "Bad setIn index" widget state bugs
+# - Newer Streamlit versions emit deprecation warnings for `use_container_width` (migrating to `width='stretch'`)
+streamlit==1.51.0
 
 # Databricks & MLflow
 mlflow>=2.8.0
@@ -10,6 +13,9 @@ databricks-sdk>=0.12.0
 
 # Data Processing
 pandas>=2.0.0
+
+# Data Generation (for demos)
+faker>=28.0.0
 
 # Visualization (for monitoring dashboards)
 plotly>=5.14.0

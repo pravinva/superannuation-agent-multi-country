@@ -23,7 +23,9 @@ from shared.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-GOVERNANCE_TABLE = "super_advisory_demo.member_data.governance"
+from config import get_governance_table_path
+
+GOVERNANCE_TABLE = get_governance_table_path()
 
 class AuditLogger:
     """Handles MLflow and UC Governance logging"""
